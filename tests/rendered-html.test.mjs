@@ -405,8 +405,37 @@ test("restores separate persisted SEAL progress for different learners", () => {
     progressRecords: learnerBProgressRecords,
   }, "learner-b");
 
-  assert.deepEqual(restoredLearnerA?.progressRecords, learnerAProgressRecords);
-  assert.deepEqual(restoredLearnerB?.progressRecords, learnerBProgressRecords);
+  assert.deepEqual(restoredLearnerA?.progressRecords.map((record) => ({
+    ...record,
+    recordedAt: record.recordedAt.toISOString(),
+  })), learnerAProgressRecords);
+  assert.deepEqual(restoredLearnerB?.progressRecords.map((record) => ({
+    ...record,
+    recordedAt: record.recordedAt.toISOString(),
+  })), learnerBProgressRecords);
+});
+
+test("restores persisted learner progress as SEAL ProgressRecords", () => {
+  const recordedAt = "2026-09-08T10:00:00.000Z";
+  const restoredProgress = restoreLearnerProgress({
+    learnerId: "learner-1",
+    completedActivityIds: ["SVO-01"],
+    progressRecords: [{
+      recordId: "progress-1",
+      learnerId: "learner-1",
+      activityId: "SVO-01",
+      skillId: "basic-svo-construction",
+      completed: true,
+      score: 1,
+      attemptNumber: 1,
+      timeSpentSeconds: 12,
+      recordedAt,
+    }],
+  }, "learner-1");
+
+  assert.ok(restoredProgress);
+  assert.ok(restoredProgress.progressRecords[0].recordedAt instanceof Date);
+  assert.equal(restoredProgress.progressRecords[0].recordedAt.toISOString(), recordedAt);
 });
 
 test("adds assessed SEAL progress to the learner snapshot", async () => {

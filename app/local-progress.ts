@@ -24,7 +24,7 @@ export function restoreLearnerProgress(
   isListening03Complete: boolean;
   isListening04Complete: boolean;
   isListening05Complete: boolean;
-  progressRecords: StoredProgressRecord[];
+  progressRecords: ProgressRecord[];
 } | null {
   if (
     storedProgress.learnerId !== learnerId
@@ -34,7 +34,12 @@ export function restoreLearnerProgress(
   return {
     completedActivityIds: storedProgress.completedActivityIds,
     progressRecords: Array.isArray(storedProgress.progressRecords)
-      ? storedProgress.progressRecords.filter((record) => record.learnerId === learnerId)
+      ? storedProgress.progressRecords
+        .filter((record) => record.learnerId === learnerId)
+        .map((record) => ({
+          ...record,
+          recordedAt: new Date(record.recordedAt),
+        }))
       : [],
     isListening01Complete: Array.isArray(storedProgress.completedListeningActivityIds)
       && storedProgress.completedListeningActivityIds.includes("LISTEN-SVO-01"),
