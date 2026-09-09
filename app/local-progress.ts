@@ -51,9 +51,19 @@ export function restoreLearnerProgress(
 
 export function completeListening01Progress(
   progress: StoredLearnerProgress,
+  progressRecord?: ProgressRecord,
 ): StoredLearnerProgress {
   return {
     ...progress,
+    ...(progressRecord ? {
+      progressRecords: [
+        ...(progress.progressRecords ?? []),
+        {
+          ...progressRecord,
+          recordedAt: progressRecord.recordedAt.toISOString(),
+        },
+      ],
+    } : {}),
     completedListeningActivityIds: [
       ...new Set([
         ...(progress.completedListeningActivityIds ?? []),

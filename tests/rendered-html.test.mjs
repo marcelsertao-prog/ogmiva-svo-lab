@@ -8,7 +8,10 @@ import { EventBus } from "@seal-sdk/events";
 import { EvidenceEngine } from "@seal-sdk/evidence";
 import { DefaultProgressEngine } from "@seal-sdk/progress";
 import { DefaultSessionEngine } from "@seal-sdk/session";
-import { checkListening01Answer } from "../app/listening-01.ts";
+import {
+  checkListening01Answer,
+  listening01Activity,
+} from "../app/listening-01.ts";
 import {
   canUnlockListening01,
   canUnlockListening02,
@@ -404,6 +407,38 @@ test("restores separate persisted SEAL progress for different learners", () => {
 
   assert.deepEqual(restoredLearnerA?.progressRecords, learnerAProgressRecords);
   assert.deepEqual(restoredLearnerB?.progressRecords, learnerBProgressRecords);
+});
+
+test("adds assessed SEAL progress to the learner snapshot", async () => {
+  const activityEngine = new ActivityEngine();
+  activityEngine.register(listening01Activity);
+  const sessionEngine = new DefaultSessionEngine(new EventBus(), activityEngine);
+  const createdSession = await sessionEngine.createSession({
+    learnerId: "learner-1",
+    activityId: listening01Activity.id,
+  });
+  const session = await sessionEngine.startSession(createdSession.sessionId);
+  const result = await checkListening01Answer({
+    selectedAnswer: listening01Activity.expectedUnits[0],
+    activity: listening01Activity,
+    session,
+    evidenceEngine: new EvidenceEngine(),
+    assessmentEngine: new AssessmentEngine(),
+    progressEngine: new DefaultProgressEngine(),
+    sessionEngine,
+  });
+  assert.ok(result.progress);
+
+  const completedProgress = completeListening01Progress({
+    learnerId: session.learnerId,
+    completedActivityIds: ["SVO-01"],
+    progressRecords: [],
+  }, result.progress);
+
+  assert.deepEqual(completedProgress.progressRecords, [{
+    ...result.progress,
+    recordedAt: result.progress.recordedAt.toISOString(),
+  }]);
 });
 
 test("keeps Listening 02 completion separate from attempt feedback", () => {
