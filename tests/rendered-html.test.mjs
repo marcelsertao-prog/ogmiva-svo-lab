@@ -367,6 +367,45 @@ test("keeps Listening 01 completion separate from attempt feedback", () => {
   assert.equal(resetState.isListening01Complete, true);
 });
 
+test("restores separate persisted SEAL progress for different learners", () => {
+  const learnerAProgressRecords = [{
+    recordId: "progress-a-1",
+    learnerId: "learner-a",
+    activityId: "SVO-01",
+    skillId: "basic-svo-construction",
+    completed: true,
+    score: 1,
+    attemptNumber: 1,
+    timeSpentSeconds: 12,
+    recordedAt: "2026-09-08T10:00:00.000Z",
+  }];
+  const learnerBProgressRecords = [{
+    recordId: "progress-b-1",
+    learnerId: "learner-b",
+    activityId: "SVO-02",
+    skillId: "basic-svo-construction",
+    completed: true,
+    score: 1,
+    attemptNumber: 1,
+    timeSpentSeconds: 15,
+    recordedAt: "2026-09-08T10:05:00.000Z",
+  }];
+
+  const restoredLearnerA = restoreLearnerProgress({
+    learnerId: "learner-a",
+    completedActivityIds: ["SVO-01"],
+    progressRecords: learnerAProgressRecords,
+  }, "learner-a");
+  const restoredLearnerB = restoreLearnerProgress({
+    learnerId: "learner-b",
+    completedActivityIds: ["SVO-01", "SVO-02"],
+    progressRecords: learnerBProgressRecords,
+  }, "learner-b");
+
+  assert.deepEqual(restoredLearnerA?.progressRecords, learnerAProgressRecords);
+  assert.deepEqual(restoredLearnerB?.progressRecords, learnerBProgressRecords);
+});
+
 test("keeps Listening 02 completion separate from attempt feedback", () => {
   const oldestProgress = {
     learnerId: "learner-1",

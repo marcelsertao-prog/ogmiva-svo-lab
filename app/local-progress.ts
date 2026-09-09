@@ -1,10 +1,17 @@
+import type { ProgressRecord } from "@seal-sdk/progress";
+
 export type ActivityId = "SVO-01" | "SVO-02" | "SVO-03" | "SVO-04" | "SVO-05";
 export type ListeningActivityId = "LISTEN-SVO-01" | "LISTEN-SVO-02" | "LISTEN-SVO-03" | "LISTEN-SVO-04" | "LISTEN-SVO-05";
+
+export type StoredProgressRecord = Omit<ProgressRecord, "recordedAt"> & {
+  recordedAt: string;
+};
 
 export type StoredLearnerProgress = {
   learnerId: string;
   completedActivityIds: ActivityId[];
   completedListeningActivityIds?: ListeningActivityId[];
+  progressRecords?: StoredProgressRecord[];
 };
 
 export function restoreLearnerProgress(
@@ -17,6 +24,7 @@ export function restoreLearnerProgress(
   isListening03Complete: boolean;
   isListening04Complete: boolean;
   isListening05Complete: boolean;
+  progressRecords: StoredProgressRecord[];
 } | null {
   if (
     storedProgress.learnerId !== learnerId
@@ -25,6 +33,9 @@ export function restoreLearnerProgress(
 
   return {
     completedActivityIds: storedProgress.completedActivityIds,
+    progressRecords: Array.isArray(storedProgress.progressRecords)
+      ? storedProgress.progressRecords.filter((record) => record.learnerId === learnerId)
+      : [],
     isListening01Complete: Array.isArray(storedProgress.completedListeningActivityIds)
       && storedProgress.completedListeningActivityIds.includes("LISTEN-SVO-01"),
     isListening02Complete: Array.isArray(storedProgress.completedListeningActivityIds)
