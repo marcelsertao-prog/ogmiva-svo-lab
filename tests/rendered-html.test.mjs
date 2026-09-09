@@ -441,6 +441,20 @@ test("adds assessed SEAL progress to the learner snapshot", async () => {
   }]);
 });
 
+test("passes assessed Listening 01 progress to the persisted learner snapshot", async () => {
+  const pageSource = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const handlerStart = pageSource.indexOf("async function checkListeningChoice()");
+  const handlerEnd = pageSource.indexOf("async function handleListening02Answer()", handlerStart);
+  assert.ok(handlerStart >= 0);
+  assert.ok(handlerEnd > handlerStart);
+
+  const handlerSource = pageSource.slice(handlerStart, handlerEnd);
+  assert.match(
+    handlerSource,
+    /completeListening01Progress\(\{[\s\S]*?\}\s*,\s*result\.progress\s*\)\)/,
+  );
+});
+
 test("keeps Listening 02 completion separate from attempt feedback", () => {
   const oldestProgress = {
     learnerId: "learner-1",
