@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { runInNewContext } from "node:vm";
 
 import { ActivityEngine } from "@seal-sdk/activity";
 import { AssessmentEngine } from "@seal-sdk/assessment";
@@ -482,6 +483,61 @@ test("passes assessed Listening 01 progress to the persisted learner snapshot", 
     handlerSource,
     /completeListening01Progress\(\{[\s\S]*?\}\s*,\s*result\.progress\s*\)\)/,
   );
+});
+
+test("preserves persisted SEAL progress when later UI completion is saved", async () => {
+  const pageSource = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const functionStart = pageSource.indexOf("function persistProgress(");
+  const functionEnd = pageSource.indexOf("function addToAnswer(", functionStart);
+  assert.ok(functionStart >= 0);
+  assert.ok(functionEnd > functionStart);
+
+  const persistProgressSource = pageSource
+    .slice(functionStart, functionEnd)
+    .replace("progress: StoredLearnerProgress", "progress");
+  const progressStorageKey = "spread11:learner-1:svo-progress";
+  const progressRecord = {
+    recordId: "progress-1",
+    learnerId: "learner-1",
+    activityId: "LISTEN-SVO-01",
+    skillId: "listening-svo-recognition",
+    completed: true,
+    score: 1,
+    attemptNumber: 1,
+    timeSpentSeconds: 12,
+    recordedAt: "2026-09-08T10:00:00.000Z",
+  };
+  let storedValue = JSON.stringify({
+    learnerId: "learner-1",
+    completedActivityIds: ["SVO-01"],
+    completedListeningActivityIds: ["LISTEN-SVO-01"],
+    progressRecords: [progressRecord],
+  });
+  const nextProgress = {
+    learnerId: "learner-1",
+    completedActivityIds: ["SVO-01", "SVO-02"],
+    completedListeningActivityIds: ["LISTEN-SVO-01"],
+  };
+  const window = {
+    localStorage: {
+      getItem: () => storedValue,
+      setItem: (_key, value) => {
+        storedValue = value;
+      },
+    },
+  };
+
+  runInNewContext(`${persistProgressSource}; persistProgress(nextProgress);`, {
+    nextProgress,
+    progressStorageKey,
+    restoreLearnerProgress,
+    window,
+  });
+
+  assert.deepEqual(JSON.parse(storedValue), {
+    ...nextProgress,
+    progressRecords: [progressRecord],
+  });
 });
 
 test("keeps Listening 02 completion separate from attempt feedback", () => {

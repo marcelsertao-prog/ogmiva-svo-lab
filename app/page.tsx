@@ -380,7 +380,15 @@ export default function Home() {
 
   function persistProgress(progress: StoredLearnerProgress) {
     try {
-      window.localStorage.setItem(progressStorageKey, JSON.stringify(progress));
+      const storedProgress = window.localStorage.getItem(progressStorageKey);
+      const restoredProgress = storedProgress
+        ? restoreLearnerProgress(JSON.parse(storedProgress), progress.learnerId)
+        : null;
+      const nextProgress = progress.progressRecords === undefined && restoredProgress
+        ? { ...progress, progressRecords: restoredProgress.progressRecords }
+        : progress;
+
+      window.localStorage.setItem(progressStorageKey, JSON.stringify(nextProgress));
     } catch {
       // Keep the learning flow available if browser storage is unavailable.
     }
