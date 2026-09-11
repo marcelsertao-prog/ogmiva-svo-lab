@@ -380,7 +380,8 @@ export default function Home() {
 
   function persistProgress(progress: StoredLearnerProgress) {
     try {
-      const storedProgress = window.localStorage.getItem(progressStorageKey);
+      const learnerProgressStorageKey = `spread11:${progress.learnerId}:svo-progress`;
+      const storedProgress = window.localStorage.getItem(learnerProgressStorageKey);
       const restoredProgress = storedProgress
         ? restoreLearnerProgress(JSON.parse(storedProgress), progress.learnerId)
         : null;
@@ -394,7 +395,7 @@ export default function Home() {
         }
         : progress;
 
-      window.localStorage.setItem(progressStorageKey, JSON.stringify(nextProgress));
+      window.localStorage.setItem(learnerProgressStorageKey, JSON.stringify(nextProgress));
     } catch {
       // Keep the learning flow available if browser storage is unavailable.
     }

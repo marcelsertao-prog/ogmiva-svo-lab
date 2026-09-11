@@ -64,7 +64,14 @@ import {
   startListening05Session,
 } from "../app/listening-05.ts";
 
-async function persistProgressInMemory(storedProgress, nextProgress) {
+async function persistProgressInMemory(
+  storedProgress,
+  nextProgress,
+  {
+    progressStorageKey = `spread11:${nextProgress.learnerId}:svo-progress`,
+    onSetItem = () => {},
+  } = {},
+) {
   const pageSource = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const functionStart = pageSource.indexOf("function persistProgress(");
   const functionEnd = pageSource.indexOf("function addToAnswer(", functionStart);
@@ -74,12 +81,12 @@ async function persistProgressInMemory(storedProgress, nextProgress) {
   const persistProgressSource = pageSource
     .slice(functionStart, functionEnd)
     .replace("progress: StoredLearnerProgress", "progress");
-  const progressStorageKey = `spread11:${nextProgress.learnerId}:svo-progress`;
   let storedValue = JSON.stringify(storedProgress);
   const window = {
     localStorage: {
       getItem: () => storedValue,
-      setItem: (_key, value) => {
+      setItem: (key, value) => {
+        onSetItem(key);
         storedValue = value;
       },
     },
@@ -588,6 +595,23 @@ test("appends new assessed SEAL progress without replacing the learner history",
     ...nextProgress,
     progressRecords: [listening01Progress, listening02Progress],
   });
+});
+
+test("persists progress under the learner's own storage key", async () => {
+  const nextProgress = {
+    learnerId: "learner-b",
+    completedActivityIds: ["SVO-01"],
+  };
+  let persistedKey = null;
+
+  await persistProgressInMemory(undefined, nextProgress, {
+    progressStorageKey: "spread11:learner-1:svo-progress",
+    onSetItem: (key) => {
+      persistedKey = key;
+    },
+  });
+
+  assert.equal(persistedKey, "spread11:learner-b:svo-progress");
 });
 
 test("keeps Listening 02 completion separate from attempt feedback", () => {
