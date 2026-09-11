@@ -60,7 +60,7 @@ export function completeListening01Progress(
 ): StoredLearnerProgress {
   return {
     ...progress,
-    ...(progressRecord ? {
+    ...(progressRecord?.learnerId === progress.learnerId ? {
       progressRecords: [
         ...(progress.progressRecords ?? []),
         {

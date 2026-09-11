@@ -509,6 +509,26 @@ test("adds assessed SEAL progress to the learner snapshot", async () => {
   }]);
 });
 
+test("does not add assessed progress belonging to another learner", () => {
+  const completedProgress = completeListening01Progress({
+    learnerId: "learner-a",
+    completedActivityIds: ["SVO-01"],
+    progressRecords: [],
+  }, {
+    recordId: "progress-b-1",
+    learnerId: "learner-b",
+    activityId: "LISTEN-SVO-01",
+    skillId: "listening-svo-recognition",
+    completed: true,
+    score: 1,
+    attemptNumber: 1,
+    timeSpentSeconds: 12,
+    recordedAt: new Date("2026-09-08T10:00:00.000Z"),
+  });
+
+  assert.deepEqual(completedProgress.progressRecords, []);
+});
+
 test("passes assessed Listening 01 progress to the persisted learner snapshot", async () => {
   const pageSource = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const handlerStart = pageSource.indexOf("async function checkListeningChoice()");
