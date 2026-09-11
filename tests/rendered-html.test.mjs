@@ -64,6 +64,37 @@ import {
   startListening05Session,
 } from "../app/listening-05.ts";
 
+async function persistProgressInMemory(storedProgress, nextProgress) {
+  const pageSource = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const functionStart = pageSource.indexOf("function persistProgress(");
+  const functionEnd = pageSource.indexOf("function addToAnswer(", functionStart);
+  assert.ok(functionStart >= 0);
+  assert.ok(functionEnd > functionStart);
+
+  const persistProgressSource = pageSource
+    .slice(functionStart, functionEnd)
+    .replace("progress: StoredLearnerProgress", "progress");
+  const progressStorageKey = `spread11:${nextProgress.learnerId}:svo-progress`;
+  let storedValue = JSON.stringify(storedProgress);
+  const window = {
+    localStorage: {
+      getItem: () => storedValue,
+      setItem: (_key, value) => {
+        storedValue = value;
+      },
+    },
+  };
+
+  runInNewContext(`${persistProgressSource}; persistProgress(nextProgress);`, {
+    nextProgress,
+    progressStorageKey,
+    restoreLearnerProgress,
+    window,
+  });
+
+  return JSON.parse(storedValue);
+}
+
 test("renders the initial SVO journey", async () => {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
@@ -486,16 +517,6 @@ test("passes assessed Listening 01 progress to the persisted learner snapshot", 
 });
 
 test("preserves persisted SEAL progress when later UI completion is saved", async () => {
-  const pageSource = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  const functionStart = pageSource.indexOf("function persistProgress(");
-  const functionEnd = pageSource.indexOf("function addToAnswer(", functionStart);
-  assert.ok(functionStart >= 0);
-  assert.ok(functionEnd > functionStart);
-
-  const persistProgressSource = pageSource
-    .slice(functionStart, functionEnd)
-    .replace("progress: StoredLearnerProgress", "progress");
-  const progressStorageKey = "spread11:learner-1:svo-progress";
   const progressRecord = {
     recordId: "progress-1",
     learnerId: "learner-1",
@@ -507,36 +528,65 @@ test("preserves persisted SEAL progress when later UI completion is saved", asyn
     timeSpentSeconds: 12,
     recordedAt: "2026-09-08T10:00:00.000Z",
   };
-  let storedValue = JSON.stringify({
+  const storedProgress = {
     learnerId: "learner-1",
     completedActivityIds: ["SVO-01"],
     completedListeningActivityIds: ["LISTEN-SVO-01"],
     progressRecords: [progressRecord],
-  });
+  };
   const nextProgress = {
     learnerId: "learner-1",
     completedActivityIds: ["SVO-01", "SVO-02"],
     completedListeningActivityIds: ["LISTEN-SVO-01"],
   };
-  const window = {
-    localStorage: {
-      getItem: () => storedValue,
-      setItem: (_key, value) => {
-        storedValue = value;
-      },
-    },
-  };
+  const persistedProgress = await persistProgressInMemory(storedProgress, nextProgress);
 
-  runInNewContext(`${persistProgressSource}; persistProgress(nextProgress);`, {
-    nextProgress,
-    progressStorageKey,
-    restoreLearnerProgress,
-    window,
-  });
-
-  assert.deepEqual(JSON.parse(storedValue), {
+  assert.deepEqual(persistedProgress, {
     ...nextProgress,
     progressRecords: [progressRecord],
+  });
+});
+
+test("appends new assessed SEAL progress without replacing the learner history", async () => {
+  const listening01Progress = {
+    recordId: "progress-1",
+    learnerId: "learner-1",
+    activityId: "LISTEN-SVO-01",
+    skillId: "listening-svo-recognition",
+    completed: true,
+    score: 1,
+    attemptNumber: 1,
+    timeSpentSeconds: 12,
+    recordedAt: "2026-09-08T10:00:00.000Z",
+  };
+  const listening02Progress = {
+    recordId: "progress-2",
+    learnerId: "learner-1",
+    activityId: "LISTEN-SVO-02",
+    skillId: "listening-svo-construction",
+    completed: true,
+    score: 1,
+    attemptNumber: 1,
+    timeSpentSeconds: 18,
+    recordedAt: "2026-09-08T10:05:00.000Z",
+  };
+  const storedProgress = {
+    learnerId: "learner-1",
+    completedActivityIds: ["SVO-01", "SVO-02"],
+    completedListeningActivityIds: ["LISTEN-SVO-01"],
+    progressRecords: [listening01Progress],
+  };
+  const nextProgress = {
+    learnerId: "learner-1",
+    completedActivityIds: ["SVO-01", "SVO-02"],
+    completedListeningActivityIds: ["LISTEN-SVO-01", "LISTEN-SVO-02"],
+    progressRecords: [listening02Progress],
+  };
+  const persistedProgress = await persistProgressInMemory(storedProgress, nextProgress);
+
+  assert.deepEqual(persistedProgress, {
+    ...nextProgress,
+    progressRecords: [listening01Progress, listening02Progress],
   });
 });
 
