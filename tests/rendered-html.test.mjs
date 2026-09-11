@@ -634,6 +634,26 @@ test("persists progress under the learner's own storage key", async () => {
   assert.equal(persistedKey, "spread11:learner-b:svo-progress");
 });
 
+test("does not persist progress records belonging to another learner", async () => {
+  const persistedProgress = await persistProgressInMemory(undefined, {
+    learnerId: "learner-a",
+    completedActivityIds: ["SVO-01"],
+    progressRecords: [{
+      recordId: "progress-b-1",
+      learnerId: "learner-b",
+      activityId: "LISTEN-SVO-01",
+      skillId: "listening-svo-recognition",
+      completed: true,
+      score: 1,
+      attemptNumber: 1,
+      timeSpentSeconds: 12,
+      recordedAt: "2026-09-08T10:00:00.000Z",
+    }],
+  });
+
+  assert.deepEqual(persistedProgress.progressRecords, []);
+});
+
 test("keeps Listening 02 completion separate from attempt feedback", () => {
   const oldestProgress = {
     learnerId: "learner-1",

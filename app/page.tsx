@@ -385,15 +385,20 @@ export default function Home() {
       const restoredProgress = storedProgress
         ? restoreLearnerProgress(JSON.parse(storedProgress), progress.learnerId)
         : null;
+      const learnerProgressRecords = progress.progressRecords
+        ?.filter((record) => record.learnerId === progress.learnerId);
       const nextProgress = restoredProgress
         ? {
           ...progress,
           progressRecords: [
             ...restoredProgress.progressRecords,
-            ...(progress.progressRecords ?? []),
+            ...(learnerProgressRecords ?? []),
           ],
         }
-        : progress;
+        : {
+          ...progress,
+          ...(learnerProgressRecords ? { progressRecords: learnerProgressRecords } : {}),
+        };
 
       window.localStorage.setItem(learnerProgressStorageKey, JSON.stringify(nextProgress));
     } catch {
