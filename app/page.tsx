@@ -363,7 +363,7 @@ export function LearnerJourney({ learnerId }: { learnerId: string }) {
     }, 0);
 
     return () => window.clearTimeout(restoreProgress);
-  }, []);
+  }, [learnerId]);
 
   function persistCompletedActivities(completedActivityIds: ActivityId[]) {
     const progress: StoredLearnerProgress = {
