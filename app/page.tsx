@@ -333,25 +333,32 @@ export function LearnerJourney({ learnerId }: { learnerId: string }) {
 
   useEffect(() => {
     const restoreProgress = window.setTimeout(() => {
+      const clearJourneyCompletion = () => {
+        setIsSvo01Complete(false);
+        setIsSvo02Complete(false);
+        setIsSvo03Complete(false);
+        setIsSvo04Complete(false);
+        setIsSvo05Complete(false);
+        setIsListening01Complete(false);
+        setIsListening02Complete(false);
+        setIsListening03Complete(false);
+        setIsListening04Complete(false);
+        setIsListening05Complete(false);
+      };
+
       try {
         const storedProgress = window.localStorage.getItem(progressStorageKey);
         if (!storedProgress) {
-          setIsSvo01Complete(false);
-          setIsSvo02Complete(false);
-          setIsSvo03Complete(false);
-          setIsSvo04Complete(false);
-          setIsSvo05Complete(false);
-          setIsListening01Complete(false);
-          setIsListening02Complete(false);
-          setIsListening03Complete(false);
-          setIsListening04Complete(false);
-          setIsListening05Complete(false);
+          clearJourneyCompletion();
           return;
         }
 
         const parsedProgress = JSON.parse(storedProgress) as Partial<StoredLearnerProgress>;
         const restoredProgress = restoreLearnerProgress(parsedProgress, learnerId);
-        if (!restoredProgress) return;
+        if (!restoredProgress) {
+          clearJourneyCompletion();
+          return;
+        }
 
         const hasCompletedSvo01 = restoredProgress.completedActivityIds.includes("SVO-01");
         const hasCompletedSvo02 = hasCompletedSvo01 && restoredProgress.completedActivityIds.includes("SVO-02");
