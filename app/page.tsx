@@ -378,6 +378,7 @@ export function LearnerJourney({ learnerId }: { learnerId: string }) {
         setIsListening05Complete(restoredProgress.isListening05Complete);
       } catch {
         // Ignore invalid device-local progress and keep the initial journey state.
+        clearJourneyCompletion();
       }
     }, 0);
 
