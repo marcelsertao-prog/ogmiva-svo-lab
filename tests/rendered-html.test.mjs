@@ -529,6 +529,69 @@ test("restores progress for the active learner after another learner used the sa
   assert.deepEqual(restoredLearnerIds, ["learner-a", "learner-b", "learner-a"]);
 });
 
+test("does not retain another learner's progress when the active learner has no snapshot", async () => {
+  const pageSource = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const effectStart = pageSource.indexOf("  useEffect(() => {");
+  const effectEnd = pageSource.indexOf("\n\n  function persistCompletedActivities", effectStart);
+  assert.ok(effectStart >= 0);
+  assert.ok(effectEnd > effectStart);
+
+  const restoreEffectSource = pageSource
+    .slice(effectStart, effectEnd)
+    .replace(" as Partial<StoredLearnerProgress>", "");
+  const storedProgressByKey = new Map([
+    ["spread11:learner-a:svo-progress", JSON.stringify({
+      learnerId: "learner-a",
+      completedActivityIds: ["SVO-01", "SVO-02"],
+    })],
+  ]);
+  let previousDependencies;
+  let cleanup;
+  let isSvo02Complete = false;
+  const useEffect = (effect, dependencies) => {
+    const dependenciesChanged = previousDependencies === undefined
+      || dependencies.length !== previousDependencies.length
+      || dependencies.some((dependency, index) => dependency !== previousDependencies[index]);
+    if (!dependenciesChanged) return;
+
+    cleanup?.();
+    previousDependencies = dependencies;
+    cleanup = effect();
+  };
+  const window = {
+    localStorage: {
+      getItem: (key) => storedProgressByKey.get(key) ?? null,
+    },
+    setTimeout: (callback) => {
+      callback();
+      return 1;
+    },
+    clearTimeout: () => {},
+  };
+  const renderForLearner = (learnerId) => runInNewContext(restoreEffectSource, {
+    learnerId,
+    progressStorageKey: `spread11:${learnerId}:svo-progress`,
+    restoreLearnerProgress,
+    useEffect,
+    window,
+    setIsSvo01Complete: () => {},
+    setIsSvo02Complete: (value) => { isSvo02Complete = value; },
+    setIsSvo03Complete: () => {},
+    setIsSvo04Complete: () => {},
+    setIsSvo05Complete: () => {},
+    setIsListening01Complete: () => {},
+    setIsListening02Complete: () => {},
+    setIsListening03Complete: () => {},
+    setIsListening04Complete: () => {},
+    setIsListening05Complete: () => {},
+  });
+
+  renderForLearner("learner-a");
+  assert.equal(isSvo02Complete, true);
+  renderForLearner("learner-b");
+  assert.equal(isSvo02Complete, false);
+});
+
 test("restores persisted learner progress as SEAL ProgressRecords", () => {
   const recordedAt = "2026-09-08T10:00:00.000Z";
   const restoredProgress = restoreLearnerProgress({

@@ -335,7 +335,19 @@ export function LearnerJourney({ learnerId }: { learnerId: string }) {
     const restoreProgress = window.setTimeout(() => {
       try {
         const storedProgress = window.localStorage.getItem(progressStorageKey);
-        if (!storedProgress) return;
+        if (!storedProgress) {
+          setIsSvo01Complete(false);
+          setIsSvo02Complete(false);
+          setIsSvo03Complete(false);
+          setIsSvo04Complete(false);
+          setIsSvo05Complete(false);
+          setIsListening01Complete(false);
+          setIsListening02Complete(false);
+          setIsListening03Complete(false);
+          setIsListening04Complete(false);
+          setIsListening05Complete(false);
+          return;
+        }
 
         const parsedProgress = JSON.parse(storedProgress) as Partial<StoredLearnerProgress>;
         const restoredProgress = restoreLearnerProgress(parsedProgress, learnerId);
