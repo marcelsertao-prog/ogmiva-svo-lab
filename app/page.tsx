@@ -158,10 +158,8 @@ const completionChoices: SentenceChoice[] = [
   { id: "verb", label: "reads" },
   { id: "subject", label: "Daniel" },
 ];
-const learnerId = "learner-1";
 const listening04VisualRoles: Listening04Role[] = ["Verb", "Object", "Subject"];
 const listening05VisualRoles: Listening05Role[] = ["Verb", "Object", "Subject"];
-const progressStorageKey = `spread11:${learnerId}:svo-progress`;
 const evidenceEngine = new EvidenceEngine();
 const assessmentEngine = new AssessmentEngine();
 const progressEngine = new DefaultProgressEngine();
@@ -170,6 +168,11 @@ activityEngine.register(listening01Activity);
 const sessionEngine = new DefaultSessionEngine(new EventBus(), activityEngine);
 
 export default function Home() {
+  return <LearnerJourney learnerId="learner-1" />;
+}
+
+export function LearnerJourney({ learnerId }: { learnerId: string }) {
+  const progressStorageKey = `spread11:${learnerId}:svo-progress`;
   const [screen, setScreen] = useState<Screen>("journey");
   const [isSvo01Complete, setIsSvo01Complete] = useState(false);
   const [isSvo02Complete, setIsSvo02Complete] = useState(false);
