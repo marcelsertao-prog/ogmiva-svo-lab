@@ -469,6 +469,29 @@ test("keeps Listening 01 completion separate from attempt feedback", () => {
   assert.equal(resetState.isListening01Complete, true);
 });
 
+test("reads the stable external user id from authenticated request headers", async () => {
+  const authSource = await readFile(new URL("../app/chatgpt-auth.ts", import.meta.url), "utf8");
+  const constantsStart = authSource.indexOf("const USER_ID_HEADER");
+  const getUserEnd = authSource.indexOf("export async function requireChatGPTUser");
+  const decoderStart = authSource.indexOf("function safeDecodeURIComponent");
+  assert.ok(constantsStart >= 0);
+  assert.ok(getUserEnd > constantsStart);
+  assert.ok(decoderStart > getUserEnd);
+
+  const getUserSource = `${authSource.slice(constantsStart, getUserEnd)}\n${authSource.slice(decoderStart)}`
+    .replace("export async function getChatGPTUser(): Promise<ChatGPTUser | null>", "async function getChatGPTUser()")
+    .replace("function safeDecodeURIComponent(value: string): string | null", "function safeDecodeURIComponent(value)");
+  const requestHeaders = new Headers({
+    "oai-authenticated-user-id": "external-user-1",
+    "oai-authenticated-user-email": "returning@example.com",
+  });
+  const user = await runInNewContext(`${getUserSource}; getChatGPTUser();`, {
+    headers: async () => requestHeaders,
+  });
+
+  assert.equal(user?.userId, "external-user-1");
+});
+
 test("resolves the existing learnerId for an identified returning user", async () => {
   const learnerId = await resolveLearnerId(
     { userId: "external-user-1" },
