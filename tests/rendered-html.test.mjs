@@ -72,7 +72,7 @@ async function persistProgressInMemory(
     onSetItem = () => {},
   } = {},
 ) {
-  const pageSource = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const pageSource = await readFile(new URL("../app/learner-journey.tsx", import.meta.url), "utf8");
   const functionStart = pageSource.indexOf("function persistProgress(");
   const functionEnd = pageSource.indexOf("function addToAnswer(", functionStart);
   assert.ok(functionStart >= 0);
@@ -103,7 +103,7 @@ async function persistProgressInMemory(
 }
 
 async function createLearnerRestoreHarness(storedProgressByKey) {
-  const pageSource = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const pageSource = await readFile(new URL("../app/learner-journey.tsx", import.meta.url), "utf8");
   const effectStart = pageSource.indexOf("  useEffect(() => {");
   const effectEnd = pageSource.indexOf("\n\n  function persistCompletedActivities", effectStart);
   assert.ok(effectStart >= 0);
@@ -369,7 +369,7 @@ test("styles current, complete, and locked states in the first paired stage", as
 });
 
 test("marks Listening 05 as the end of the current journey", async () => {
-  const pageSource = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const pageSource = await readFile(new URL("../app/learner-journey.tsx", import.meta.url), "utf8");
 
   assert.match(pageSource, /Jornada concluída/);
 });
@@ -665,7 +665,7 @@ test("does not add assessed progress belonging to another learner", () => {
 });
 
 test("passes assessed Listening 01 progress to the persisted learner snapshot", async () => {
-  const pageSource = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const pageSource = await readFile(new URL("../app/learner-journey.tsx", import.meta.url), "utf8");
   const handlerStart = pageSource.indexOf("async function checkListeningChoice()");
   const handlerEnd = pageSource.indexOf("async function handleListening02Answer()", handlerStart);
   assert.ok(handlerStart >= 0);
