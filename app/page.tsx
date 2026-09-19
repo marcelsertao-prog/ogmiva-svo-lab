@@ -1,4 +1,4 @@
-import { getChatGPTUser } from "./chatgpt-auth";
+import { requireChatGPTUser } from "./chatgpt-auth";
 import {
   createConfiguredLearnerIdLookup,
   getActiveLearnerId,
@@ -11,11 +11,7 @@ const findLearnerIdByExternalUserId = createConfiguredLearnerIdLookup({
 });
 
 export default async function Home() {
-  const identity = await getChatGPTUser();
-  if (!identity) {
-    return <LearnerJourney learnerId={getActiveLearnerId()} />;
-  }
-
+  const identity = await requireChatGPTUser("/");
   const learnerId = await getActiveLearnerId(
     identity,
     findLearnerIdByExternalUserId,

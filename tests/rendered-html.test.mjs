@@ -188,7 +188,10 @@ async function fetchRenderedHome(headers = {}) {
 }
 
 test("renders the initial SVO journey", async () => {
-  const response = await fetchRenderedHome();
+  const response = await fetchRenderedHome({
+    "oai-authenticated-user-id": "external-user-2",
+    "oai-authenticated-user-email": "returning@example.com",
+  });
 
   assert.equal(response.status, 200);
   assert.match(
@@ -367,6 +370,17 @@ test("renders the initial SVO journey", async () => {
     html.match(/Listening 05 · SVO role-mapping transfer/g)?.length,
     1,
   );
+});
+
+test("redirects a visitor without external identity to authentication", async () => {
+  const response = await fetchRenderedHome();
+
+  assert.equal(response.status, 307);
+  const location = response.headers.get("location");
+  assert.ok(location);
+  const redirectUrl = new URL(location);
+  assert.equal(redirectUrl.pathname, "/signin-with-chatgpt");
+  assert.equal(redirectUrl.searchParams.get("return_to"), "/");
 });
 
 test("renders the journey for the configured returning learner", async () => {
