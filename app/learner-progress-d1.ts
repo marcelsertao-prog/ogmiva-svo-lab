@@ -1,6 +1,7 @@
-import type {
-  LearnerProgressPersistence,
-  StoredLearnerProgress,
+import {
+  persistLearnerProgress,
+  type LearnerProgressPersistence,
+  type StoredLearnerProgress,
 } from "./local-progress";
 import { getRequestExecutionContext } from "vinext/shims/request-context";
 
@@ -49,8 +50,10 @@ export function loadD1LearnerProgress(learnerId: string) {
 export function saveD1LearnerProgress(snapshot: StoredLearnerProgress) {
   const requestContext = getD1LearnerProgressRequestContext();
 
-  return createD1LearnerProgressPersistence(requestContext.DB)
-    .save(snapshot.learnerId, snapshot);
+  return persistLearnerProgress(
+    createD1LearnerProgressPersistence(requestContext.DB),
+    snapshot,
+  );
 }
 
 export function createD1LearnerProgressPersistence(

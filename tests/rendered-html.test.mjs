@@ -20,9 +20,6 @@ import {
   resolveLearnerId,
 } from "../app/learner-identity.ts";
 import {
-  createD1LearnerProgressPersistence,
-} from "../app/learner-progress-d1.ts";
-import {
   canUnlockListening01,
   canUnlockListening02,
   canUnlockListening03,
@@ -75,6 +72,33 @@ import {
   restartListening05,
   startListening05Session,
 } from "../app/listening-05.ts";
+
+async function importAppModuleWithLocalProgress(modulePath, moduleName) {
+  const hooks = registerHooks({
+    resolve(specifier, context, nextResolve) {
+      if (
+        specifier === "./local-progress"
+        && context.parentURL?.includes(`/app/${moduleName}`)
+      ) {
+        return nextResolve("./local-progress.ts", context);
+      }
+
+      return nextResolve(specifier, context);
+    },
+  });
+
+  try {
+    return await import(modulePath);
+  } finally {
+    hooks.deregister();
+  }
+}
+
+const { createD1LearnerProgressPersistence } =
+  await importAppModuleWithLocalProgress(
+    "../app/learner-progress-d1.ts",
+    "learner-progress-d1.ts",
+  );
 
 async function persistProgressInMemory(
   storedProgress,
@@ -469,23 +493,82 @@ test("saves completed Listening 01 progress under the authenticated resolved lea
   });
 });
 
-test("sends learner journey progress to the authenticated persistence endpoint", async (t) => {
-  const hooks = registerHooks({
-    resolve(specifier, context, nextResolve) {
-      if (
-        specifier === "./local-progress"
-        && context.parentURL?.includes("/app/learner-progress-client.ts")
-      ) {
-        return nextResolve("./local-progress.ts", context);
-      }
-
-      return nextResolve(specifier, context);
+test("preserves persisted D1 progress records when a later authenticated snapshot omits them", async () => {
+  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
+  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
+  const { default: worker } = await import(workerUrl.href);
+  const progressRecord = {
+    recordId: "progress-listening-01-1",
+    learnerId: "learner-2",
+    activityId: "LISTEN-SVO-01",
+    skillId: "listening-svo-recognition",
+    completed: true,
+    score: 1,
+    attemptNumber: 1,
+    timeSpentSeconds: 12,
+    recordedAt: "2026-09-14T10:00:00.000Z",
+  };
+  const storedSnapshot = {
+    learnerId: "learner-2",
+    completedActivityIds: ["SVO-01"],
+    completedListeningActivityIds: ["LISTEN-SVO-01"],
+    progressRecords: [progressRecord],
+  };
+  let savedSnapshot = null;
+  const response = await worker.fetch(
+    new Request("http://localhost/api/learner-progress", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "oai-authenticated-user-id": "external-user-2",
+        "oai-authenticated-user-email": "returning@example.com",
+      },
+      body: JSON.stringify({
+        learnerId: "learner-2",
+        completedActivityIds: ["SVO-01", "SVO-02"],
+        completedListeningActivityIds: ["LISTEN-SVO-01"],
+      }),
+    }),
+    {
+      ASSETS: {
+        fetch: async () => new Response("Not found", { status: 404 }),
+      },
+      DB: {
+        prepare: (query) => ({
+          bind: (...values) => ({
+            first: async () => /SELECT snapshot/.test(query)
+              ? { snapshot: JSON.stringify(storedSnapshot) }
+              : null,
+            run: async () => {
+              if (/INSERT INTO learner_progress/.test(query)) {
+                savedSnapshot = JSON.parse(values[1]);
+              }
+            },
+          }),
+        }),
+      },
     },
-  });
-  const { persistLearnerJourneyProgress } = await import(
-    "../app/learner-progress-client.ts"
+    {
+      waitUntil() {},
+      passThroughOnException() {},
+    },
   );
-  hooks.deregister();
+
+  assert.equal(response.status, 204);
+  assert.deepEqual(savedSnapshot, {
+    learnerId: "learner-2",
+    completedActivityIds: ["SVO-01", "SVO-02"],
+    completedListeningActivityIds: ["LISTEN-SVO-01"],
+    progressRecords: [progressRecord],
+  });
+});
+
+test("sends learner journey progress to the authenticated persistence endpoint", async (t) => {
+  const { persistLearnerJourneyProgress } =
+    await importAppModuleWithLocalProgress(
+      "../app/learner-progress-client.ts",
+      "learner-progress-client.ts",
+    );
   const requests = [];
   t.mock.method(globalThis, "fetch", async (input, init) => {
     const request = input instanceof Request
