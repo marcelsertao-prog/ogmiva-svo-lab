@@ -5,6 +5,7 @@ import handler from "vinext/server/app-router-entry";
 interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
+  OGMIVA_PROVISIONING_SECRET?: string;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -21,6 +22,7 @@ interface ExecutionContext {
 
 type LearnerProgressExecutionContext = ExecutionContext & {
   DB: D1Database;
+  OGMIVA_PROVISIONING_SECRET?: string;
   learnerProgressLoads: Map<string, Promise<unknown>>;
 };
 
@@ -47,6 +49,7 @@ const worker = {
 
     const requestContext: LearnerProgressExecutionContext = {
       DB: env.DB,
+      OGMIVA_PROVISIONING_SECRET: env.OGMIVA_PROVISIONING_SECRET,
       learnerProgressLoads: new Map(),
       waitUntil: (promise) => ctx.waitUntil(promise),
       passThroughOnException: () => ctx.passThroughOnException(),

@@ -716,6 +716,131 @@ test("provisions one learner account locally without storing or returning its cr
   assert.ok(!JSON.stringify(result ?? null).includes(credential));
 });
 
+test("rejects an invalid administrative provisioning secret without creating an account", async (t) => {
+  const distServerPath = fileURLToPath(new URL("../dist/server", import.meta.url));
+  const miniflare = new Miniflare({
+    rootPath: distServerPath,
+    modulesRoot: distServerPath,
+    modules: true,
+    modulesRules: [
+      { type: "ESModule", include: ["**/*.js", "**/*.mjs"] },
+    ],
+    scriptPath: "index.js",
+    compatibilityDate: "2026-05-15",
+    compatibilityFlags: ["nodejs_compat"],
+    bindings: {
+      OGMIVA_PROVISIONING_SECRET: "correct administrative secret",
+    },
+    d1Databases: { DB: `learner-admin-${process.pid}-${Date.now()}` },
+  });
+  t.after(() => miniflare.dispose());
+
+  const database = await miniflare.getD1Database("DB");
+  const migrationFiles = (await readdir(
+    new URL("../drizzle", import.meta.url),
+  ))
+    .filter((fileName) => fileName.endsWith(".sql"))
+    .sort();
+  for (const migrationFile of migrationFiles) {
+    const migration = await readFile(
+      new URL(`../drizzle/${migrationFile}`, import.meta.url),
+      "utf8",
+    );
+    await database.prepare(migration.trim()).run();
+  }
+
+  const response = await miniflare.dispatchFetch(
+    "http://localhost/api/admin/learner-accounts",
+    {
+      method: "POST",
+      headers: {
+        authorization: "Bearer incorrect administrative secret",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        loginId: "school-user-2",
+        learnerId: "learner-2",
+        credential: "credential that must not be persisted",
+      }),
+    },
+  );
+
+  const storedAccounts = await database.prepare(`
+    SELECT COUNT(*) AS accountCount
+    FROM learner_accounts
+  `).first();
+  assert.equal(storedAccounts?.accountCount, 0);
+  assert.equal(response.status, 401);
+});
+
+test("provisions one learner account with the correct administrative secret", async (t) => {
+  const distServerPath = fileURLToPath(new URL("../dist/server", import.meta.url));
+  const provisioningSecret = "correct administrative secret";
+  const miniflare = new Miniflare({
+    rootPath: distServerPath,
+    modulesRoot: distServerPath,
+    modules: true,
+    modulesRules: [
+      { type: "ESModule", include: ["**/*.js", "**/*.mjs"] },
+    ],
+    scriptPath: "index.js",
+    compatibilityDate: "2026-05-15",
+    compatibilityFlags: ["nodejs_compat"],
+    bindings: { OGMIVA_PROVISIONING_SECRET: provisioningSecret },
+    d1Databases: {
+      DB: `learner-admin-authorized-${process.pid}-${Date.now()}`,
+    },
+  });
+  t.after(() => miniflare.dispose());
+
+  const database = await miniflare.getD1Database("DB");
+  const migrationFiles = (await readdir(
+    new URL("../drizzle", import.meta.url),
+  ))
+    .filter((fileName) => fileName.endsWith(".sql"))
+    .sort();
+  for (const migrationFile of migrationFiles) {
+    const migration = await readFile(
+      new URL(`../drizzle/${migrationFile}`, import.meta.url),
+      "utf8",
+    );
+    await database.prepare(migration.trim()).run();
+  }
+
+  const loginId = "school-user-2";
+  const learnerId = "learner-2";
+  const credential = "credential supplied to the authorized provisioner";
+  const response = await miniflare.dispatchFetch(
+    "http://localhost/api/admin/learner-accounts",
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${provisioningSecret}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ loginId, learnerId, credential }),
+    },
+  );
+
+  assert.equal(response.status, 204);
+  const storedAccount = await database.prepare(`
+    SELECT
+      login_id AS loginId,
+      learner_id AS learnerId,
+      credential_hash AS credentialHash
+    FROM learner_accounts
+    WHERE login_id = ?
+  `).bind(loginId).first();
+  assert.equal(storedAccount?.loginId, loginId);
+  assert.equal(storedAccount?.learnerId, learnerId);
+  assert.match(
+    storedAccount?.credentialHash ?? "",
+    /^pbkdf2-sha256\$600000\$[A-Za-z0-9_-]+\$[A-Za-z0-9_-]+$/,
+  );
+  assert.notEqual(storedAccount?.credentialHash, credential);
+  assert.ok(!JSON.stringify(storedAccount).includes(credential));
+});
+
 test("renders the journey for the configured returning learner", async () => {
   const response = await fetchRenderedHome({
     "oai-authenticated-user-id": "external-user-2",

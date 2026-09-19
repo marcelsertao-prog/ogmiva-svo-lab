@@ -1,11 +1,15 @@
 import { getRequestExecutionContext } from "vinext/shims/request-context";
 
-import { verifyPbkdf2Credential } from "./learner-credential";
+import {
+  createPbkdf2CredentialVerifier,
+  verifyPbkdf2Credential,
+} from "./learner-credential.ts";
 
-type D1LearnerAccountDatabase = {
+export type D1LearnerAccountDatabase = {
   prepare(query: string): {
     bind(...values: unknown[]): {
       first<T>(): Promise<T | null>;
+      run(): Promise<unknown>;
     };
   };
 };
@@ -18,6 +22,28 @@ type ProvisionedLearnerAccount = {
   learnerId: string;
   credentialVerifier: string;
 };
+
+export async function provisionLearnerAccount({
+  database,
+  loginId,
+  learnerId,
+  credential,
+}: {
+  database: D1LearnerAccountDatabase;
+  loginId: string;
+  learnerId: string;
+  credential: string;
+}) {
+  const credentialVerifier = await createPbkdf2CredentialVerifier(credential);
+
+  await database.prepare(`
+    INSERT INTO learner_accounts (
+      login_id,
+      learner_id,
+      credential_hash
+    ) VALUES (?, ?, ?)
+  `).bind(loginId, learnerId, credentialVerifier).run();
+}
 
 export async function authenticateProvisionedLearner(
   loginId: string,
