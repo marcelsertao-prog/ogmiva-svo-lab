@@ -120,7 +120,7 @@ async function createLearnerRestoreHarness(storedProgressByKey) {
   return { completion, renderForLearner, restoredLearnerIds };
 }
 
-async function fetchRenderedHome(headers = {}) {
+async function fetchRenderedHome(headers = {}, bindings = {}) {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
@@ -133,6 +133,14 @@ async function fetchRenderedHome(headers = {}) {
       ASSETS: {
         fetch: async () => new Response("Not found", { status: 404 }),
       },
+      DB: {
+        prepare: () => ({
+          bind: () => ({
+            first: async () => null,
+          }),
+        }),
+      },
+      ...bindings,
     },
     {
       waitUntil() {},
@@ -346,6 +354,52 @@ test("renders the journey for the configured returning learner", async () => {
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /\\"learnerId\\":\\"learner-2\\"/);
+});
+
+test("restores D1 progress for the authenticated resolved learner", async () => {
+  const lookedUpLearnerIds = [];
+  const progressRecord = {
+    recordId: "progress-learner-2-1",
+    learnerId: "learner-2",
+    activityId: "LISTEN-SVO-01",
+    skillId: "listening-svo-recognition",
+    completed: true,
+    score: 1,
+    attemptNumber: 1,
+    timeSpentSeconds: 12,
+    recordedAt: "2026-09-13T10:00:00.000Z",
+  };
+  const snapshot = {
+    learnerId: "learner-2",
+    completedActivityIds: ["SVO-01"],
+    completedListeningActivityIds: ["LISTEN-SVO-01"],
+    progressRecords: [progressRecord],
+  };
+  const response = await fetchRenderedHome({
+    "oai-authenticated-user-id": "external-user-2",
+    "oai-authenticated-user-email": "returning@example.com",
+  }, {
+    DB: {
+      prepare: () => ({
+        bind: (learnerId) => ({
+          first: async () => {
+            lookedUpLearnerIds.push(learnerId);
+            return { snapshot: JSON.stringify(snapshot) };
+          },
+        }),
+      }),
+    },
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(lookedUpLearnerIds, ["learner-2"]);
+  const html = await response.text();
+  const stageStart = html.indexOf('data-stage-id="SVO-LISTENING-01"');
+  const stageEnd = html.indexOf("</section>", stageStart);
+  const stageHtml = html.slice(stageStart, stageEnd);
+  assert.match(stageHtml, /data-stage-progress="2\/2"/);
+  assert.match(stageHtml, /data-stage-state="complete"/);
+  assert.match(html, /progress-learner-2-1/);
 });
 
 test("does not render a learner journey when the external identity has no learner association", async () => {

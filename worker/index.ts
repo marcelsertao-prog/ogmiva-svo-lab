@@ -19,6 +19,11 @@ interface ExecutionContext {
   passThroughOnException(): void;
 }
 
+type LearnerProgressExecutionContext = ExecutionContext & {
+  DB: D1Database;
+  learnerProgressLoads: Map<string, Promise<unknown>>;
+};
+
 // Image security config. SVG sources with .svg extension auto-skip the
 // optimization endpoint on the client side (served directly, no proxy).
 // To route SVGs through the optimizer (with security headers), set
@@ -40,7 +45,14 @@ const worker = {
       }, allowedWidths);
     }
 
-    return handler.fetch(request, env, ctx);
+    const requestContext: LearnerProgressExecutionContext = {
+      DB: env.DB,
+      learnerProgressLoads: new Map(),
+      waitUntil: (promise) => ctx.waitUntil(promise),
+      passThroughOnException: () => ctx.passThroughOnException(),
+    };
+
+    return handler.fetch(request, env, requestContext);
   },
 };
 

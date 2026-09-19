@@ -4,6 +4,9 @@ import {
   getActiveLearnerId,
 } from "./learner-identity";
 import { LearnerJourney } from "./learner-journey";
+import {
+  loadD1LearnerProgress,
+} from "./learner-progress-d1";
 
 const findLearnerIdByExternalUserId = createConfiguredLearnerIdLookup({
   externalUserId: "external-user-2",
@@ -17,5 +20,14 @@ export default async function Home() {
     findLearnerIdByExternalUserId,
   );
 
-  return learnerId ? <LearnerJourney learnerId={learnerId} /> : null;
+  if (!learnerId) return null;
+
+  const initialProgress = await loadD1LearnerProgress(learnerId);
+
+  return (
+    <LearnerJourney
+      learnerId={learnerId}
+      initialProgress={initialProgress}
+    />
+  );
 }

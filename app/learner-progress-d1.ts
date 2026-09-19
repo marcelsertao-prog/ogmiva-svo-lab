@@ -2,6 +2,7 @@ import type {
   LearnerProgressPersistence,
   StoredLearnerProgress,
 } from "./local-progress";
+import { getRequestExecutionContext } from "vinext/shims/request-context";
 
 type D1LearnerProgressDatabase = {
   prepare(query: string): {
@@ -11,6 +12,39 @@ type D1LearnerProgressDatabase = {
     };
   };
 };
+
+type D1LearnerProgressRequestContext = {
+  DB: D1LearnerProgressDatabase;
+  learnerProgressLoads: Map<
+    string,
+    Promise<Partial<StoredLearnerProgress> | null>
+  >;
+};
+
+function getD1LearnerProgressRequestContext(): D1LearnerProgressRequestContext {
+  const requestContext = getRequestExecutionContext() as
+    | D1LearnerProgressRequestContext
+    | null;
+
+  if (!requestContext?.DB || !requestContext.learnerProgressLoads) {
+    throw new Error("Cloudflare D1 binding `DB` is unavailable.");
+  }
+
+  return requestContext;
+}
+
+export function loadD1LearnerProgress(learnerId: string) {
+  const requestContext = getD1LearnerProgressRequestContext();
+  const pendingLoad = requestContext.learnerProgressLoads.get(learnerId);
+
+  if (pendingLoad) return pendingLoad;
+
+  const load = createD1LearnerProgressPersistence(requestContext.DB)
+    .load(learnerId);
+  requestContext.learnerProgressLoads.set(learnerId, load);
+
+  return load;
+}
 
 export function createD1LearnerProgressPersistence(
   database: D1LearnerProgressDatabase,

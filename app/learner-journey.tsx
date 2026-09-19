@@ -170,13 +170,60 @@ const activityEngine = new ActivityEngine();
 activityEngine.register(listening01Activity);
 const sessionEngine = new DefaultSessionEngine(new EventBus(), activityEngine);
 
-export function LearnerJourney({ learnerId }: { learnerId: string }) {
+function getSequentialSvoCompletion(completedActivityIds: ActivityId[]) {
+  const isSvo01Complete = completedActivityIds.includes("SVO-01");
+  const isSvo02Complete = isSvo01Complete
+    && completedActivityIds.includes("SVO-02");
+  const isSvo03Complete = isSvo02Complete
+    && completedActivityIds.includes("SVO-03");
+  const isSvo04Complete = isSvo03Complete
+    && completedActivityIds.includes("SVO-04");
+  const isSvo05Complete = isSvo04Complete
+    && completedActivityIds.includes("SVO-05");
+
+  return {
+    isSvo01Complete,
+    isSvo02Complete,
+    isSvo03Complete,
+    isSvo04Complete,
+    isSvo05Complete,
+  };
+}
+
+export function LearnerJourney({
+  learnerId,
+  initialProgress = null,
+}: {
+  learnerId: string;
+  initialProgress?: Partial<StoredLearnerProgress> | null;
+}) {
+  const restoredInitialProgress = useMemo(
+    () => initialProgress
+      ? restoreLearnerProgress(initialProgress, learnerId)
+      : null,
+    [initialProgress, learnerId],
+  );
+  const initialCompletedActivityIds = restoredInitialProgress
+    ?.completedActivityIds ?? [];
+  const initialSvoCompletion = getSequentialSvoCompletion(
+    initialCompletedActivityIds,
+  );
   const [screen, setScreen] = useState<Screen>("journey");
-  const [isSvo01Complete, setIsSvo01Complete] = useState(false);
-  const [isSvo02Complete, setIsSvo02Complete] = useState(false);
-  const [isSvo03Complete, setIsSvo03Complete] = useState(false);
-  const [isSvo04Complete, setIsSvo04Complete] = useState(false);
-  const [isSvo05Complete, setIsSvo05Complete] = useState(false);
+  const [isSvo01Complete, setIsSvo01Complete] = useState(
+    initialSvoCompletion.isSvo01Complete,
+  );
+  const [isSvo02Complete, setIsSvo02Complete] = useState(
+    initialSvoCompletion.isSvo02Complete,
+  );
+  const [isSvo03Complete, setIsSvo03Complete] = useState(
+    initialSvoCompletion.isSvo03Complete,
+  );
+  const [isSvo04Complete, setIsSvo04Complete] = useState(
+    initialSvoCompletion.isSvo04Complete,
+  );
+  const [isSvo05Complete, setIsSvo05Complete] = useState(
+    initialSvoCompletion.isSvo05Complete,
+  );
   const [available, setAvailable] = useState(initialTiles);
   const [answer, setAnswer] = useState<Tile[]>([]);
   const [feedback, setFeedback] = useState<Feedback>("idle");
@@ -196,7 +243,9 @@ export function LearnerJourney({ learnerId }: { learnerId: string }) {
   const [listeningAudioError, setListeningAudioError] = useState(false);
   const [selectedListeningChoice, setSelectedListeningChoice] = useState<string | null>(null);
   const [listeningFeedback, setListeningFeedback] = useState<Feedback>("idle");
-  const [isListening01Complete, setIsListening01Complete] = useState(false);
+  const [isListening01Complete, setIsListening01Complete] = useState(
+    restoredInitialProgress?.isListening01Complete ?? false,
+  );
   const [listening01Session, setListening01Session] = useState<SessionState | null>(null);
   const [hasPlayedListening02Prompt, setHasPlayedListening02Prompt] = useState(false);
   const [isListening02Playing, setIsListening02Playing] = useState(false);
@@ -204,7 +253,9 @@ export function LearnerJourney({ learnerId }: { learnerId: string }) {
   const [listening02Available, setListening02Available] = useState(listening02InitialTiles);
   const [listening02Answer, setListening02Answer] = useState<Tile[]>([]);
   const [listening02Feedback, setListening02Feedback] = useState<Feedback>("idle");
-  const [isListening02Complete, setIsListening02Complete] = useState(false);
+  const [isListening02Complete, setIsListening02Complete] = useState(
+    restoredInitialProgress?.isListening02Complete ?? false,
+  );
   const [listening02Session, setListening02Session] = useState<SessionState | null>(null);
   const [hasPlayedListening03Prompt, setHasPlayedListening03Prompt] = useState(false);
   const [isListening03Playing, setIsListening03Playing] = useState(false);
@@ -212,7 +263,9 @@ export function LearnerJourney({ learnerId }: { learnerId: string }) {
   const [listening03Available, setListening03Available] = useState(listening03InitialTiles);
   const [listening03Answer, setListening03Answer] = useState<Tile[]>([]);
   const [listening03Feedback, setListening03Feedback] = useState<Feedback>("idle");
-  const [isListening03Complete, setIsListening03Complete] = useState(false);
+  const [isListening03Complete, setIsListening03Complete] = useState(
+    restoredInitialProgress?.isListening03Complete ?? false,
+  );
   const [listening03Session, setListening03Session] = useState<SessionState | null>(null);
   const [hasPlayedListening04Prompt, setHasPlayedListening04Prompt] = useState(false);
   const [isListening04Playing, setIsListening04Playing] = useState(false);
@@ -221,7 +274,9 @@ export function LearnerJourney({ learnerId }: { learnerId: string }) {
   const [listening04Slots, setListening04Slots] = useState<Listening04SlotState>({});
   const [listening04ActiveRole, setListening04ActiveRole] = useState<Listening04Role>("Verb");
   const [listening04Feedback, setListening04Feedback] = useState<Feedback>("idle");
-  const [isListening04Complete, setIsListening04Complete] = useState(false);
+  const [isListening04Complete, setIsListening04Complete] = useState(
+    restoredInitialProgress?.isListening04Complete ?? false,
+  );
   const [listening04Session, setListening04Session] = useState<SessionState | null>(null);
   const [hasPlayedListening05Prompt, setHasPlayedListening05Prompt] = useState(false);
   const [isListening05Playing, setIsListening05Playing] = useState(false);
@@ -230,7 +285,9 @@ export function LearnerJourney({ learnerId }: { learnerId: string }) {
   const [listening05Slots, setListening05Slots] = useState<Listening05SlotState>({});
   const [listening05ActiveRole, setListening05ActiveRole] = useState<Listening05Role>("Verb");
   const [listening05Feedback, setListening05Feedback] = useState<Feedback>("idle");
-  const [isListening05Complete, setIsListening05Complete] = useState(false);
+  const [isListening05Complete, setIsListening05Complete] = useState(
+    restoredInitialProgress?.isListening05Complete ?? false,
+  );
 
   const sentence = useMemo(
     () => answer.map((tile) => tile.label).join(" "),
@@ -345,26 +402,25 @@ export function LearnerJourney({ learnerId }: { learnerId: string }) {
       };
 
       try {
-        const restoredProgress = await loadLearnerProgress(
+        const localProgress = await loadLearnerProgress(
           createLocalLearnerProgressPersistence(window.localStorage),
           learnerId,
         );
+        const restoredProgress = localProgress ?? restoredInitialProgress;
         if (!restoredProgress) {
           clearJourneyCompletion();
           return;
         }
 
-        const hasCompletedSvo01 = restoredProgress.completedActivityIds.includes("SVO-01");
-        const hasCompletedSvo02 = hasCompletedSvo01 && restoredProgress.completedActivityIds.includes("SVO-02");
-        const hasCompletedSvo03 = hasCompletedSvo02 && restoredProgress.completedActivityIds.includes("SVO-03");
-        const hasCompletedSvo04 = hasCompletedSvo03 && restoredProgress.completedActivityIds.includes("SVO-04");
-        const hasCompletedSvo05 = hasCompletedSvo04 && restoredProgress.completedActivityIds.includes("SVO-05");
+        const svoCompletion = getSequentialSvoCompletion(
+          restoredProgress.completedActivityIds,
+        );
 
-        setIsSvo01Complete(hasCompletedSvo01);
-        setIsSvo02Complete(hasCompletedSvo02);
-        setIsSvo03Complete(hasCompletedSvo03);
-        setIsSvo04Complete(hasCompletedSvo04);
-        setIsSvo05Complete(hasCompletedSvo05);
+        setIsSvo01Complete(svoCompletion.isSvo01Complete);
+        setIsSvo02Complete(svoCompletion.isSvo02Complete);
+        setIsSvo03Complete(svoCompletion.isSvo03Complete);
+        setIsSvo04Complete(svoCompletion.isSvo04Complete);
+        setIsSvo05Complete(svoCompletion.isSvo05Complete);
         setIsListening01Complete(restoredProgress.isListening01Complete);
         setIsListening02Complete(restoredProgress.isListening02Complete);
         setIsListening03Complete(restoredProgress.isListening03Complete);
@@ -372,12 +428,12 @@ export function LearnerJourney({ learnerId }: { learnerId: string }) {
         setIsListening05Complete(restoredProgress.isListening05Complete);
       } catch {
         // Ignore invalid device-local progress and keep the initial journey state.
-        clearJourneyCompletion();
+        if (!restoredInitialProgress) clearJourneyCompletion();
       }
     }, 0);
 
     return () => window.clearTimeout(restoreProgress);
-  }, [learnerId]);
+  }, [learnerId, restoredInitialProgress]);
 
   async function persistCompletedActivities(completedActivityIds: ActivityId[]) {
     const progress: StoredLearnerProgress = {
