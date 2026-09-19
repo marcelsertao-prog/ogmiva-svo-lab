@@ -11,10 +11,15 @@ const findLearnerIdByExternalUserId = createConfiguredLearnerIdLookup({
 });
 
 export default async function Home() {
+  const identity = await getChatGPTUser();
+  if (!identity) {
+    return <LearnerJourney learnerId={getActiveLearnerId()} />;
+  }
+
   const learnerId = await getActiveLearnerId(
-    getChatGPTUser,
+    identity,
     findLearnerIdByExternalUserId,
   );
 
-  return <LearnerJourney learnerId={learnerId ?? getActiveLearnerId()} />;
+  return learnerId ? <LearnerJourney learnerId={learnerId} /> : null;
 }

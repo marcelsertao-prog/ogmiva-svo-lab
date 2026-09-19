@@ -380,6 +380,17 @@ test("renders the journey for the configured returning learner", async () => {
   assert.match(html, /\\"learnerId\\":\\"learner-2\\"/);
 });
 
+test("does not render a learner journey when the external identity has no learner association", async () => {
+  const response = await fetchRenderedHome({
+    "oai-authenticated-user-id": "unassociated-external-user",
+    "oai-authenticated-user-email": "unassociated@example.com",
+  });
+
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.doesNotMatch(html, /\\"learnerId\\":/);
+});
+
 test("styles current, complete, and locked states in the first paired stage", async () => {
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
