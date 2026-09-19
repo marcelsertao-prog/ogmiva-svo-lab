@@ -370,6 +370,63 @@ test("redirects a visitor without external identity to authentication", async ()
   assert.equal(redirectUrl.searchParams.get("return_to"), "/");
 });
 
+test("restores learner progress from a valid Ogmiva session", async () => {
+  const progressRecord = {
+    recordId: "progress-learner-2-ogmiva-session",
+    learnerId: "learner-2",
+    activityId: "LISTEN-SVO-01",
+    skillId: "listening-svo-recognition",
+    completed: true,
+    score: 1,
+    attemptNumber: 1,
+    timeSpentSeconds: 12,
+    recordedAt: "2026-09-19T10:00:00.000Z",
+  };
+  const snapshot = {
+    learnerId: "learner-2",
+    completedActivityIds: ["SVO-01"],
+    completedListeningActivityIds: ["LISTEN-SVO-01"],
+    progressRecords: [progressRecord],
+  };
+  const lookedUpLearnerIds = [];
+  const response = await fetchRenderedHome({
+    cookie: "ogmiva_session=valid-session-learner-2",
+  }, {
+    DB: {
+      prepare: () => ({
+        bind: (...values) => ({
+          first: async () => {
+            if (values.includes("valid-session-learner-2")) {
+              return {
+                userId: "school-user-2",
+                externalUserId: "school-user-2",
+                learnerId: "learner-2",
+              };
+            }
+
+            if (values.includes("learner-2")) {
+              lookedUpLearnerIds.push("learner-2");
+              return { snapshot: JSON.stringify(snapshot) };
+            }
+
+            return null;
+          },
+        }),
+      }),
+    },
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(lookedUpLearnerIds, ["learner-2"]);
+  const html = await response.text();
+  const stageStart = html.indexOf('data-stage-id="SVO-LISTENING-01"');
+  const stageEnd = html.indexOf("</section>", stageStart);
+  const stageHtml = html.slice(stageStart, stageEnd);
+  assert.match(stageHtml, /data-stage-progress="2\/2"/);
+  assert.match(stageHtml, /data-stage-state="complete"/);
+  assert.match(html, /progress-learner-2-ogmiva-session/);
+});
+
 test("renders the journey for the configured returning learner", async () => {
   const response = await fetchRenderedHome({
     "oai-authenticated-user-id": "external-user-2",

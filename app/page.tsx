@@ -5,13 +5,11 @@ import { LearnerJourney } from "./learner-journey";
 import {
   loadD1LearnerProgress,
 } from "./learner-progress-d1";
+import { getOgmivaSessionLearnerId } from "./ogmiva-session";
 
 export default async function Home() {
-  const identity = await requireChatGPTUser("/");
-  const learnerId = await getActiveLearnerId(
-    identity,
-    findConfiguredLearnerIdByExternalUserId,
-  );
+  const sessionLearnerId = await getOgmivaSessionLearnerId();
+  const learnerId = sessionLearnerId ?? await resolveChatGPTLearnerId();
 
   if (!learnerId) return null;
 
@@ -22,5 +20,14 @@ export default async function Home() {
       learnerId={learnerId}
       initialProgress={initialProgress}
     />
+  );
+}
+
+async function resolveChatGPTLearnerId() {
+  const identity = await requireChatGPTUser("/");
+
+  return getActiveLearnerId(
+    identity,
+    findConfiguredLearnerIdByExternalUserId,
   );
 }

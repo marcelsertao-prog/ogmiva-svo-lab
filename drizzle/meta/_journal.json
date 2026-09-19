@@ -8,6 +8,13 @@
       "when": 1789332392799,
       "tag": "0000_many_maestro",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1789818063636,
+      "tag": "0001_magenta_enchantress",
+      "breakpoints": true
     }
   ]
 }

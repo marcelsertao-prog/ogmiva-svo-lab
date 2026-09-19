@@ -6,3 +6,9 @@ export const learnerProgress = sqliteTable("learner_progress", {
   snapshot: text("snapshot").notNull(),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const learnerSessions = sqliteTable("learner_sessions", {
+  sessionId: text("session_id").primaryKey(),
+  learnerId: text("learner_id").notNull(),
+  expiresAt: text("expires_at").notNull(),
+});
