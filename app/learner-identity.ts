@@ -1,3 +1,7 @@
+export function getActiveLearnerId(): string {
+  return "learner-1";
+}
+
 export async function resolveLearnerId(
   identity: { userId: string },
   findLearnerIdByExternalUserId: (
