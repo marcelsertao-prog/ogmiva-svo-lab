@@ -1,26 +1,37 @@
+type ExternalIdentity = { userId: string };
+type LearnerIdLookup = (
+  externalUserId: string,
+) => Promise<string | null>;
+
 export function getActiveLearnerId(): string;
 export function getActiveLearnerId(
-  identity: { userId: string },
-  findLearnerIdByExternalUserId: (
-    externalUserId: string,
-  ) => Promise<string | null>,
+  identityOrSource:
+    | ExternalIdentity
+    | (() => Promise<ExternalIdentity | null>),
+  findLearnerIdByExternalUserId: LearnerIdLookup,
 ): Promise<string | null>;
 export function getActiveLearnerId(
-  identity?: { userId: string },
-  findLearnerIdByExternalUserId?: (
-    externalUserId: string,
-  ) => Promise<string | null>,
+  identityOrSource?:
+    | ExternalIdentity
+    | (() => Promise<ExternalIdentity | null>),
+  findLearnerIdByExternalUserId?: LearnerIdLookup,
 ): string | Promise<string | null> {
-  if (!identity || !findLearnerIdByExternalUserId) return "learner-1";
+  if (!identityOrSource || !findLearnerIdByExternalUserId) return "learner-1";
 
-  return resolveLearnerId(identity, findLearnerIdByExternalUserId);
+  if (typeof identityOrSource === "function") {
+    return identityOrSource().then((identity) =>
+      identity
+        ? resolveLearnerId(identity, findLearnerIdByExternalUserId)
+        : null,
+    );
+  }
+
+  return resolveLearnerId(identityOrSource, findLearnerIdByExternalUserId);
 }
 
 export async function resolveLearnerId(
-  identity: { userId: string },
-  findLearnerIdByExternalUserId: (
-    externalUserId: string,
-  ) => Promise<string | null>,
+  identity: ExternalIdentity,
+  findLearnerIdByExternalUserId: LearnerIdLookup,
 ): Promise<string | null> {
   return findLearnerIdByExternalUserId(identity.userId);
 }

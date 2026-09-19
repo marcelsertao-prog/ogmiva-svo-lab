@@ -520,6 +520,25 @@ test("resolves the active learner through the identified external user", async (
   assert.deepEqual(resolvedExternalUserIds, ["external-user-1"]);
 });
 
+test("obtains the external identity before resolving the active learner", async () => {
+  const identitySourceReads = [];
+  const resolvedExternalUserIds = [];
+  const learnerId = await getActiveLearnerId(
+    async () => {
+      identitySourceReads.push("read");
+      return { userId: "external-user-1" };
+    },
+    async (externalUserId) => {
+      resolvedExternalUserIds.push(externalUserId);
+      return externalUserId === "external-user-1" ? "learner-1" : null;
+    },
+  );
+
+  assert.deepEqual(identitySourceReads, ["read"]);
+  assert.deepEqual(resolvedExternalUserIds, ["external-user-1"]);
+  assert.equal(learnerId, "learner-1");
+});
+
 test("restores separate persisted SEAL progress for different learners", () => {
   const learnerAProgressRecords = [{
     recordId: "progress-a-1",
