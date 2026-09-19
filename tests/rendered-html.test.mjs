@@ -178,6 +178,43 @@ async function fetchRenderedHome(headers = {}, bindings = {}) {
   );
 }
 
+async function createAdministrativeProvisioningHarness(t, databaseLabel) {
+  const distServerPath = fileURLToPath(new URL("../dist/server", import.meta.url));
+  const provisioningSecret = "correct administrative secret";
+  const miniflare = new Miniflare({
+    rootPath: distServerPath,
+    modulesRoot: distServerPath,
+    modules: true,
+    modulesRules: [
+      { type: "ESModule", include: ["**/*.js", "**/*.mjs"] },
+    ],
+    scriptPath: "index.js",
+    compatibilityDate: "2026-05-15",
+    compatibilityFlags: ["nodejs_compat"],
+    bindings: { OGMIVA_PROVISIONING_SECRET: provisioningSecret },
+    d1Databases: {
+      DB: `learner-admin-${databaseLabel}-${process.pid}-${Date.now()}`,
+    },
+  });
+  t.after(() => miniflare.dispose());
+
+  const database = await miniflare.getD1Database("DB");
+  const migrationFiles = (await readdir(
+    new URL("../drizzle", import.meta.url),
+  ))
+    .filter((fileName) => fileName.endsWith(".sql"))
+    .sort();
+  for (const migrationFile of migrationFiles) {
+    const migration = await readFile(
+      new URL(`../drizzle/${migrationFile}`, import.meta.url),
+      "utf8",
+    );
+    await database.prepare(migration.trim()).run();
+  }
+
+  return { database, miniflare, provisioningSecret };
+}
+
 test("renders the initial SVO journey", async () => {
   const response = await fetchRenderedHome({
     "oai-authenticated-user-id": "external-user-2",
@@ -717,37 +754,8 @@ test("provisions one learner account locally without storing or returning its cr
 });
 
 test("rejects an invalid administrative provisioning secret without creating an account", async (t) => {
-  const distServerPath = fileURLToPath(new URL("../dist/server", import.meta.url));
-  const miniflare = new Miniflare({
-    rootPath: distServerPath,
-    modulesRoot: distServerPath,
-    modules: true,
-    modulesRules: [
-      { type: "ESModule", include: ["**/*.js", "**/*.mjs"] },
-    ],
-    scriptPath: "index.js",
-    compatibilityDate: "2026-05-15",
-    compatibilityFlags: ["nodejs_compat"],
-    bindings: {
-      OGMIVA_PROVISIONING_SECRET: "correct administrative secret",
-    },
-    d1Databases: { DB: `learner-admin-${process.pid}-${Date.now()}` },
-  });
-  t.after(() => miniflare.dispose());
-
-  const database = await miniflare.getD1Database("DB");
-  const migrationFiles = (await readdir(
-    new URL("../drizzle", import.meta.url),
-  ))
-    .filter((fileName) => fileName.endsWith(".sql"))
-    .sort();
-  for (const migrationFile of migrationFiles) {
-    const migration = await readFile(
-      new URL(`../drizzle/${migrationFile}`, import.meta.url),
-      "utf8",
-    );
-    await database.prepare(migration.trim()).run();
-  }
+  const { database, miniflare } =
+    await createAdministrativeProvisioningHarness(t, "invalid-secret");
 
   const response = await miniflare.dispatchFetch(
     "http://localhost/api/admin/learner-accounts",
@@ -774,38 +782,8 @@ test("rejects an invalid administrative provisioning secret without creating an 
 });
 
 test("provisions one learner account with the correct administrative secret", async (t) => {
-  const distServerPath = fileURLToPath(new URL("../dist/server", import.meta.url));
-  const provisioningSecret = "correct administrative secret";
-  const miniflare = new Miniflare({
-    rootPath: distServerPath,
-    modulesRoot: distServerPath,
-    modules: true,
-    modulesRules: [
-      { type: "ESModule", include: ["**/*.js", "**/*.mjs"] },
-    ],
-    scriptPath: "index.js",
-    compatibilityDate: "2026-05-15",
-    compatibilityFlags: ["nodejs_compat"],
-    bindings: { OGMIVA_PROVISIONING_SECRET: provisioningSecret },
-    d1Databases: {
-      DB: `learner-admin-authorized-${process.pid}-${Date.now()}`,
-    },
-  });
-  t.after(() => miniflare.dispose());
-
-  const database = await miniflare.getD1Database("DB");
-  const migrationFiles = (await readdir(
-    new URL("../drizzle", import.meta.url),
-  ))
-    .filter((fileName) => fileName.endsWith(".sql"))
-    .sort();
-  for (const migrationFile of migrationFiles) {
-    const migration = await readFile(
-      new URL(`../drizzle/${migrationFile}`, import.meta.url),
-      "utf8",
-    );
-    await database.prepare(migration.trim()).run();
-  }
+  const { database, miniflare, provisioningSecret } =
+    await createAdministrativeProvisioningHarness(t, "authorized");
 
   const loginId = "school-user-2";
   const learnerId = "learner-2";
@@ -839,6 +817,39 @@ test("provisions one learner account with the correct administrative secret", as
   );
   assert.notEqual(storedAccount?.credentialHash, credential);
   assert.ok(!JSON.stringify(storedAccount).includes(credential));
+});
+
+test("rejects an invalid administrative provisioning payload without creating an account", async (t) => {
+  const { database, miniflare, provisioningSecret } =
+    await createAdministrativeProvisioningHarness(t, "invalid-payload");
+
+  const response = await miniflare.dispatchFetch(
+    "http://localhost/api/admin/learner-accounts",
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${provisioningSecret}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        loginId: "school-user-3",
+        learnerId: "learner-3",
+        credential: "",
+      }),
+    },
+  );
+
+  const storedAccounts = await database.prepare(`
+    SELECT COUNT(*) AS accountCount
+    FROM learner_accounts
+  `).first();
+  assert.deepEqual(
+    {
+      status: response.status,
+      accountCount: storedAccounts?.accountCount,
+    },
+    { status: 400, accountCount: 0 },
+  );
 });
 
 test("renders the journey for the configured returning learner", async () => {

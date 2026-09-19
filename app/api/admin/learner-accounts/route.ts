@@ -11,9 +11,9 @@ type LearnerAccountProvisioningEnvironment = {
 };
 
 type LearnerAccountProvisioningRequest = {
-  loginId: string;
-  learnerId: string;
-  credential: string;
+  loginId?: unknown;
+  learnerId?: unknown;
+  credential?: unknown;
 };
 
 export async function POST(request: Request) {
@@ -30,7 +30,24 @@ export async function POST(request: Request) {
     return new Response(null, { status: 401 });
   }
 
-  const body = await request.json() as LearnerAccountProvisioningRequest;
+  let body: LearnerAccountProvisioningRequest;
+  try {
+    body = await request.json() as LearnerAccountProvisioningRequest;
+  } catch {
+    return new Response(null, { status: 400 });
+  }
+
+  if (
+    typeof body.loginId !== "string"
+    || body.loginId.length === 0
+    || typeof body.learnerId !== "string"
+    || body.learnerId.length === 0
+    || typeof body.credential !== "string"
+    || body.credential.length === 0
+  ) {
+    return new Response(null, { status: 400 });
+  }
+
   await provisionLearnerAccount({
     database: requestContext.DB,
     loginId: body.loginId,
