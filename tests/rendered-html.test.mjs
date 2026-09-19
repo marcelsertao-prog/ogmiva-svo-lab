@@ -393,10 +393,10 @@ test("restores learner progress from a valid Ogmiva session", async () => {
     cookie: "ogmiva_session=valid-session-learner-2",
   }, {
     DB: {
-      prepare: () => ({
+      prepare: (query) => ({
         bind: (...values) => ({
           first: async () => {
-            if (values.includes("valid-session-learner-2")) {
+            if (/FROM learner_sessions/.test(query)) {
               return {
                 userId: "school-user-2",
                 externalUserId: "school-user-2",
@@ -425,6 +425,60 @@ test("restores learner progress from a valid Ogmiva session", async () => {
   assert.match(stageHtml, /data-stage-progress="2\/2"/);
   assert.match(stageHtml, /data-stage-state="complete"/);
   assert.match(html, /progress-learner-2-ogmiva-session/);
+});
+
+test("issues a secure Ogmiva session for an authenticated associated learner", async () => {
+  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
+  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
+  const { default: worker } = await import(workerUrl.href);
+  const savedSessions = [];
+  const response = await worker.fetch(
+    new Request("http://localhost/api/learner-session", {
+      method: "POST",
+      headers: {
+        "oai-authenticated-user-id": "external-user-2",
+        "oai-authenticated-user-email": "returning@example.com",
+      },
+    }),
+    {
+      ASSETS: {
+        fetch: async () => new Response("Not found", { status: 404 }),
+      },
+      DB: {
+        prepare: (query) => ({
+          bind: (...values) => ({
+            run: async () => {
+              if (/INSERT INTO learner_sessions/.test(query)) {
+                savedSessions.push(values);
+              }
+            },
+          }),
+        }),
+      },
+    },
+    {
+      waitUntil() {},
+      passThroughOnException() {},
+    },
+  );
+
+  assert.equal(response.status, 204);
+  const setCookie = response.headers.get("set-cookie");
+  assert.ok(setCookie);
+  assert.match(setCookie, /^ogmiva_session=[^;]+/);
+  assert.match(setCookie, /;\s*HttpOnly(?:;|$)/i);
+  assert.match(setCookie, /;\s*Secure(?:;|$)/i);
+  assert.match(setCookie, /;\s*SameSite=Lax(?:;|$)/i);
+  assert.match(setCookie, /;\s*Path=\/(?:;|$)/i);
+
+  const sessionToken = setCookie.match(/^ogmiva_session=([^;]+)/)?.[1];
+  assert.ok(sessionToken);
+  assert.ok(sessionToken.length >= 32);
+  assert.equal(savedSessions.length, 1);
+  const [storedTokenRepresentation, learnerId, expiresAt] = savedSessions[0];
+  assert.notEqual(storedTokenRepresentation, sessionToken);
+  assert.equal(learnerId, "learner-2");
+  assert.ok(typeof expiresAt === "string" && expiresAt.length > 0);
 });
 
 test("renders the journey for the configured returning learner", async () => {
@@ -587,7 +641,7 @@ test("saves learner progress under the learner resolved from a valid Ogmiva sess
       DB: {
         prepare: (query) => ({
           bind: (...values) => ({
-            first: async () => values.includes("valid-session-learner-2")
+            first: async () => /FROM learner_sessions/.test(query)
               ? { learnerId: "learner-2" }
               : null,
             run: async () => {
