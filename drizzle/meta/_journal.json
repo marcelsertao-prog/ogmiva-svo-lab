@@ -15,6 +15,13 @@
       "when": 1789818063636,
       "tag": "0001_magenta_enchantress",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789838762547,
+      "tag": "0002_wooden_vampiro",
+      "breakpoints": true
     }
   ]
 }

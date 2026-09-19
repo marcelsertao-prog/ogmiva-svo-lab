@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { registerHooks } from "node:module";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
+
+import { Miniflare } from "miniflare";
 
 import { ActivityEngine } from "@seal-sdk/activity";
 import { AssessmentEngine } from "@seal-sdk/assessment";
@@ -72,6 +75,31 @@ import {
   restartListening05,
   startListening05Session,
 } from "../app/listening-05.ts";
+
+async function createPbkdf2CredentialVerifier(credential, saltText) {
+  const iterations = 600_000;
+  const salt = new TextEncoder().encode(saltText);
+  const credentialKey = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(credential),
+    "PBKDF2",
+    false,
+    ["deriveBits"],
+  );
+  const credentialHash = new Uint8Array(await crypto.subtle.deriveBits({
+    name: "PBKDF2",
+    hash: "SHA-256",
+    salt,
+    iterations,
+  }, credentialKey, 256));
+
+  return [
+    "pbkdf2-sha256",
+    iterations,
+    Buffer.from(salt).toString("base64url"),
+    Buffer.from(credentialHash).toString("base64url"),
+  ].join("$");
+}
 
 async function importAppModuleWithLocalProgress(modulePath, moduleName) {
   const hooks = registerHooks({
@@ -487,27 +515,10 @@ test("issues a secure Ogmiva session for a provisioned learner account with vali
   const { default: worker } = await import(workerUrl.href);
   const loginId = "school-user-2";
   const credential = "correct learner credential";
-  const iterations = 600_000;
-  const salt = new TextEncoder().encode("ogmiva-test-salt");
-  const credentialKey = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(credential),
-    "PBKDF2",
-    false,
-    ["deriveBits"],
+  const credentialVerifier = await createPbkdf2CredentialVerifier(
+    credential,
+    "ogmiva-test-salt",
   );
-  const credentialHash = new Uint8Array(await crypto.subtle.deriveBits({
-    name: "PBKDF2",
-    hash: "SHA-256",
-    salt,
-    iterations,
-  }, credentialKey, 256));
-  const credentialVerifier = [
-    "pbkdf2-sha256",
-    iterations,
-    Buffer.from(salt).toString("base64url"),
-    Buffer.from(credentialHash).toString("base64url"),
-  ].join("$");
   const lookedUpLoginIds = [];
   const savedSessions = [];
   const response = await worker.fetch(
@@ -569,6 +580,86 @@ test("issues a secure Ogmiva session for a provisioned learner account with vali
   assert.equal(learnerId, "learner-2");
   assert.notEqual(learnerId, "learner-chosen-by-client");
   assert.ok(typeof expiresAt === "string" && expiresAt.length > 0);
+});
+
+test("logs in with a PBKDF2 learner account provisioned in an empty migrated D1", async (t) => {
+  const distServerPath = fileURLToPath(new URL("../dist/server", import.meta.url));
+  const migrationsPath = fileURLToPath(new URL("../drizzle", import.meta.url));
+  const miniflare = new Miniflare({
+    rootPath: distServerPath,
+    modulesRoot: distServerPath,
+    modules: true,
+    modulesRules: [
+      { type: "ESModule", include: ["**/*.js", "**/*.mjs"] },
+    ],
+    scriptPath: "index.js",
+    compatibilityDate: "2026-05-15",
+    compatibilityFlags: ["nodejs_compat"],
+    d1Databases: { DB: `learner-account-${process.pid}-${Date.now()}` },
+  });
+  t.after(() => miniflare.dispose());
+
+  const database = await miniflare.getD1Database("DB");
+  const migrationFiles = (await readdir(migrationsPath))
+    .filter((fileName) => fileName.endsWith(".sql"))
+    .sort();
+  for (const migrationFile of migrationFiles) {
+    const migration = await readFile(
+      new URL(`../drizzle/${migrationFile}`, import.meta.url),
+      "utf8",
+    );
+    await database.prepare(migration.trim()).run();
+  }
+
+  const loginId = "school-user-2";
+  const credential = "correct learner credential";
+  const credentialVerifier = await createPbkdf2CredentialVerifier(
+    credential,
+    "ogmiva-integration-test-salt",
+  );
+
+  await database.prepare(`
+    INSERT INTO learner_accounts (
+      login_id,
+      learner_id,
+      credential_hash
+    ) VALUES (?, ?, ?)
+  `).bind(loginId, "learner-2", credentialVerifier).run();
+
+  const storedAccount = await database.prepare(`
+    SELECT
+      login_id AS loginId,
+      learner_id AS learnerId,
+      credential_hash AS credentialHash
+    FROM learner_accounts
+    WHERE login_id = ?
+  `).bind(loginId).first();
+  assert.deepEqual(storedAccount, {
+    loginId,
+    learnerId: "learner-2",
+    credentialHash: credentialVerifier,
+  });
+
+  const response = await miniflare.dispatchFetch(
+    "http://localhost/api/learner-login",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        loginId,
+        credential,
+        learnerId: "learner-chosen-by-client",
+      }),
+    },
+  );
+
+  assert.equal(response.status, 204);
+  assert.match(response.headers.get("set-cookie") ?? "", /^ogmiva_session=[^;]+/);
+  const storedSession = await database.prepare(`
+    SELECT learner_id AS learnerId
+    FROM learner_sessions
+  `).first();
+  assert.deepEqual(storedSession, { learnerId: "learner-2" });
 });
 
 test("renders the journey for the configured returning learner", async () => {

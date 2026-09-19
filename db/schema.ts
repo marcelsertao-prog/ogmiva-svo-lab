@@ -12,3 +12,9 @@ export const learnerSessions = sqliteTable("learner_sessions", {
   learnerId: text("learner_id").notNull(),
   expiresAt: text("expires_at").notNull(),
 });
+
+export const learnerAccounts = sqliteTable("learner_accounts", {
+  loginId: text("login_id").primaryKey(),
+  learnerId: text("learner_id").notNull(),
+  credentialHash: text("credential_hash").notNull(),
+});
