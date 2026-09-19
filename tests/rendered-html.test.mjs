@@ -166,14 +166,14 @@ async function createLearnerRestoreHarness(storedProgressByKey) {
   return { completion, renderForLearner, restoredLearnerIds };
 }
 
-test("renders the initial SVO journey", async () => {
+async function fetchRenderedHome(headers = {}) {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
 
-  const response = await worker.fetch(
+  return worker.fetch(
     new Request("http://localhost/", {
-      headers: { accept: "text/html" },
+      headers: { accept: "text/html", ...headers },
     }),
     {
       ASSETS: {
@@ -185,6 +185,10 @@ test("renders the initial SVO journey", async () => {
       passThroughOnException() {},
     },
   );
+}
+
+test("renders the initial SVO journey", async () => {
+  const response = await fetchRenderedHome();
 
   assert.equal(response.status, 200);
   assert.match(
@@ -363,6 +367,17 @@ test("renders the initial SVO journey", async () => {
     html.match(/Listening 05 · SVO role-mapping transfer/g)?.length,
     1,
   );
+});
+
+test("renders the journey for the configured returning learner", async () => {
+  const response = await fetchRenderedHome({
+    "oai-authenticated-user-id": "external-user-2",
+    "oai-authenticated-user-email": "returning@example.com",
+  });
+
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /\\"learnerId\\":\\"learner-2\\"/);
 });
 
 test("styles current, complete, and locked states in the first paired stage", async () => {
