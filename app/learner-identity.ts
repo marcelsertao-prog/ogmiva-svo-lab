@@ -3,6 +3,12 @@ type LearnerIdLookup = (
   externalUserId: string,
 ) => Promise<string | null>;
 
+export function createConfiguredLearnerIdLookup(
+  association: { externalUserId: string; learnerId: string },
+): LearnerIdLookup {
+  return async () => association.learnerId;
+}
+
 export function getActiveLearnerId(): string;
 export function getActiveLearnerId(
   identityOrSource:

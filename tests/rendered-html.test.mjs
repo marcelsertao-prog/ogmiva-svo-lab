@@ -14,6 +14,7 @@ import {
   listening01Activity,
 } from "../app/listening-01.ts";
 import {
+  createConfiguredLearnerIdLookup,
   getActiveLearnerId,
   resolveLearnerId,
 } from "../app/learner-identity.ts";
@@ -536,6 +537,18 @@ test("obtains the external identity before resolving the active learner", async 
 
   assert.deepEqual(identitySourceReads, ["read"]);
   assert.deepEqual(resolvedExternalUserIds, ["external-user-1"]);
+  assert.equal(learnerId, "learner-1");
+});
+
+test("resolves the configured learner association for a known external user", async () => {
+  const findLearnerIdByExternalUserId =
+    createConfiguredLearnerIdLookup({
+      externalUserId: "external-user-1",
+      learnerId: "learner-1",
+    });
+
+  const learnerId = await findLearnerIdByExternalUserId("external-user-1");
+
   assert.equal(learnerId, "learner-1");
 });
 
