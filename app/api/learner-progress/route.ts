@@ -3,16 +3,21 @@ import { findConfiguredLearnerIdByExternalUserId } from "../../configured-learne
 import { getActiveLearnerId } from "../../learner-identity";
 import { saveD1LearnerProgress } from "../../learner-progress-d1";
 import type { StoredLearnerProgress } from "../../local-progress";
+import { getOgmivaSessionLearnerId } from "../../ogmiva-session";
 
 export async function POST(request: Request) {
-  const identity = await getChatGPTUser();
-  if (!identity) return new Response(null, { status: 401 });
+  let learnerId = await getOgmivaSessionLearnerId();
 
-  const learnerId = await getActiveLearnerId(
-    identity,
-    findConfiguredLearnerIdByExternalUserId,
-  );
-  if (!learnerId) return new Response(null, { status: 403 });
+  if (!learnerId) {
+    const identity = await getChatGPTUser();
+    if (!identity) return new Response(null, { status: 401 });
+
+    learnerId = await getActiveLearnerId(
+      identity,
+      findConfiguredLearnerIdByExternalUserId,
+    );
+    if (!learnerId) return new Response(null, { status: 403 });
+  }
 
   const submittedProgress = await request.json() as StoredLearnerProgress;
   const snapshot: StoredLearnerProgress = {

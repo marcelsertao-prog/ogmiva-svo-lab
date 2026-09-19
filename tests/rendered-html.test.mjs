@@ -550,6 +550,73 @@ test("saves completed Listening 01 progress under the authenticated resolved lea
   });
 });
 
+test("saves learner progress under the learner resolved from a valid Ogmiva session", async () => {
+  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
+  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
+  const { default: worker } = await import(workerUrl.href);
+  const savedSnapshots = [];
+  const progressRecord = {
+    recordId: "progress-ogmiva-session-listening-01",
+    learnerId: "learner-chosen-by-client",
+    activityId: "LISTEN-SVO-01",
+    skillId: "listening-svo-recognition",
+    completed: true,
+    score: 1,
+    attemptNumber: 1,
+    timeSpentSeconds: 12,
+    recordedAt: "2026-09-19T11:00:00.000Z",
+  };
+  const response = await worker.fetch(
+    new Request("http://localhost/api/learner-progress", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie: "ogmiva_session=valid-session-learner-2",
+      },
+      body: JSON.stringify({
+        learnerId: "learner-chosen-by-client",
+        completedActivityIds: ["SVO-01"],
+        completedListeningActivityIds: ["LISTEN-SVO-01"],
+        progressRecords: [progressRecord],
+      }),
+    }),
+    {
+      ASSETS: {
+        fetch: async () => new Response("Not found", { status: 404 }),
+      },
+      DB: {
+        prepare: (query) => ({
+          bind: (...values) => ({
+            first: async () => values.includes("valid-session-learner-2")
+              ? { learnerId: "learner-2" }
+              : null,
+            run: async () => {
+              if (/INSERT INTO learner_progress/.test(query)) {
+                savedSnapshots.push(values);
+              }
+            },
+          }),
+        }),
+      },
+    },
+    {
+      waitUntil() {},
+      passThroughOnException() {},
+    },
+  );
+
+  assert.equal(response.status, 204);
+  assert.equal(savedSnapshots.length, 1);
+  const [savedLearnerId, savedSnapshotJson] = savedSnapshots[0];
+  assert.equal(savedLearnerId, "learner-2");
+  assert.deepEqual(JSON.parse(savedSnapshotJson), {
+    learnerId: "learner-2",
+    completedActivityIds: ["SVO-01"],
+    completedListeningActivityIds: ["LISTEN-SVO-01"],
+    progressRecords: [{ ...progressRecord, learnerId: "learner-2" }],
+  });
+});
+
 test("preserves persisted D1 progress records when a later authenticated snapshot omits them", async () => {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
