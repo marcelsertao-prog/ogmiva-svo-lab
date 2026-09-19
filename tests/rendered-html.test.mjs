@@ -13,7 +13,10 @@ import {
   checkListening01Answer,
   listening01Activity,
 } from "../app/listening-01.ts";
-import { resolveLearnerId } from "../app/learner-identity.ts";
+import {
+  getActiveLearnerId,
+  resolveLearnerId,
+} from "../app/learner-identity.ts";
 import {
   canUnlockListening01,
   canUnlockListening02,
@@ -501,6 +504,20 @@ test("resolves the existing learnerId for an identified returning user", async (
   );
 
   assert.equal(learnerId, "learner-1");
+});
+
+test("resolves the active learner through the identified external user", async () => {
+  const resolvedExternalUserIds = [];
+  const learnerId = await getActiveLearnerId(
+    { userId: "external-user-1" },
+    async (externalUserId) => {
+      resolvedExternalUserIds.push(externalUserId);
+      return "learner-1";
+    },
+  );
+
+  assert.equal(learnerId, "learner-1");
+  assert.deepEqual(resolvedExternalUserIds, ["external-user-1"]);
 });
 
 test("restores separate persisted SEAL progress for different learners", () => {
