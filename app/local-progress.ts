@@ -14,6 +14,83 @@ export type StoredLearnerProgress = {
   progressRecords?: StoredProgressRecord[];
 };
 
+export type LearnerProgressPersistence = {
+  save(
+    learnerId: string,
+    snapshot: StoredLearnerProgress,
+  ): Promise<void>;
+  load(
+    learnerId: string,
+  ): Promise<Partial<StoredLearnerProgress> | null>;
+};
+
+type LocalProgressStorage = {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+};
+
+export function createLocalLearnerProgressPersistence(
+  storage: LocalProgressStorage,
+): LearnerProgressPersistence {
+  return {
+    async load(learnerId) {
+      const storedProgress = storage.getItem(
+        `spread11:${learnerId}:svo-progress`,
+      );
+
+      return storedProgress
+        ? JSON.parse(storedProgress) as Partial<StoredLearnerProgress>
+        : null;
+    },
+    async save(learnerId, snapshot) {
+      storage.setItem(
+        `spread11:${learnerId}:svo-progress`,
+        JSON.stringify(snapshot),
+      );
+    },
+  };
+}
+
+export async function loadLearnerProgress(
+  persistence: LearnerProgressPersistence,
+  learnerId: string,
+) {
+  const storedProgress = await persistence.load(learnerId);
+
+  return storedProgress
+    ? restoreLearnerProgress(storedProgress, learnerId)
+    : null;
+}
+
+export async function persistLearnerProgress(
+  persistence: LearnerProgressPersistence,
+  progress: StoredLearnerProgress,
+): Promise<void> {
+  const storedProgress = await persistence.load(progress.learnerId);
+  const restoredProgress = storedProgress
+    ? restoreLearnerProgress(storedProgress, progress.learnerId)
+    : null;
+  const learnerProgressRecords = progress.progressRecords
+    ?.filter((record) => record.learnerId === progress.learnerId);
+  const nextProgress = restoredProgress
+    ? {
+      ...progress,
+      progressRecords: [
+        ...restoredProgress.progressRecords.map((record) => ({
+          ...record,
+          recordedAt: record.recordedAt.toISOString(),
+        })),
+        ...(learnerProgressRecords ?? []),
+      ],
+    }
+    : {
+      ...progress,
+      ...(learnerProgressRecords ? { progressRecords: learnerProgressRecords } : {}),
+    };
+
+  await persistence.save(progress.learnerId, nextProgress);
+}
+
 export function restoreLearnerProgress(
   storedProgress: Partial<StoredLearnerProgress>,
   learnerId: string,

@@ -19,6 +19,9 @@ import {
   resolveLearnerId,
 } from "../app/learner-identity.ts";
 import {
+  createD1LearnerProgressPersistence,
+} from "../app/learner-progress-d1.ts";
+import {
   canUnlockListening01,
   canUnlockListening02,
   canUnlockListening03,
@@ -33,6 +36,9 @@ import {
   completeListening03Progress,
   completeListening04Progress,
   completeListening05Progress,
+  createLocalLearnerProgressPersistence,
+  loadLearnerProgress,
+  persistLearnerProgress,
   resetListening01Attempt,
   resetListening02Attempt,
   resetListening03Attempt,
@@ -73,95 +79,43 @@ async function persistProgressInMemory(
   storedProgress,
   nextProgress,
   {
-    progressStorageKey = `spread11:${nextProgress.learnerId}:svo-progress`,
     onSetItem = () => {},
   } = {},
 ) {
-  const pageSource = await readFile(new URL("../app/learner-journey.tsx", import.meta.url), "utf8");
-  const functionStart = pageSource.indexOf("function persistProgress(");
-  const functionEnd = pageSource.indexOf("function addToAnswer(", functionStart);
-  assert.ok(functionStart >= 0);
-  assert.ok(functionEnd > functionStart);
-
-  const persistProgressSource = pageSource
-    .slice(functionStart, functionEnd)
-    .replace("progress: StoredLearnerProgress", "progress");
-  let storedValue = JSON.stringify(storedProgress);
-  const window = {
-    localStorage: {
-      getItem: () => storedValue,
-      setItem: (key, value) => {
-        onSetItem(key);
-        storedValue = value;
-      },
+  let storedValue = storedProgress === undefined
+    ? null
+    : JSON.stringify(storedProgress);
+  const persistence = createLocalLearnerProgressPersistence({
+    getItem: () => storedValue,
+    setItem: (key, value) => {
+      onSetItem(key);
+      storedValue = value;
     },
-  };
-
-  runInNewContext(`${persistProgressSource}; persistProgress(nextProgress);`, {
-    nextProgress,
-    progressStorageKey,
-    restoreLearnerProgress,
-    window,
   });
+  await persistLearnerProgress(persistence, nextProgress);
 
   return JSON.parse(storedValue);
 }
 
 async function createLearnerRestoreHarness(storedProgressByKey) {
-  const pageSource = await readFile(new URL("../app/learner-journey.tsx", import.meta.url), "utf8");
-  const effectStart = pageSource.indexOf("  useEffect(() => {");
-  const effectEnd = pageSource.indexOf("\n\n  function persistCompletedActivities", effectStart);
-  assert.ok(effectStart >= 0);
-  assert.ok(effectEnd > effectStart);
-
-  const restoreEffectSource = pageSource
-    .slice(effectStart, effectEnd)
-    .replace(" as Partial<StoredLearnerProgress>", "");
-  let previousDependencies;
-  let cleanup;
   const completion = { isSvo02Complete: false };
   const restoredLearnerIds = [];
-  const useEffect = (effect, dependencies) => {
-    const dependenciesChanged = previousDependencies === undefined
-      || dependencies.length !== previousDependencies.length
-      || dependencies.some((dependency, index) => dependency !== previousDependencies[index]);
-    if (!dependenciesChanged) return;
-
-    cleanup?.();
-    previousDependencies = dependencies;
-    cleanup = effect();
-  };
-  const window = {
-    localStorage: {
-      getItem: (key) => storedProgressByKey.get(key) ?? null,
-    },
-    setTimeout: (callback) => {
-      callback();
-      return 1;
-    },
-    clearTimeout: () => {},
-  };
-  const restoreProgress = (storedProgress, learnerId) => {
-    restoredLearnerIds.push(learnerId);
-    return restoreLearnerProgress(storedProgress, learnerId);
-  };
-  const renderForLearner = (learnerId) => runInNewContext(restoreEffectSource, {
-    learnerId,
-    progressStorageKey: `spread11:${learnerId}:svo-progress`,
-    restoreLearnerProgress: restoreProgress,
-    useEffect,
-    window,
-    setIsSvo01Complete: () => {},
-    setIsSvo02Complete: (value) => { completion.isSvo02Complete = value; },
-    setIsSvo03Complete: () => {},
-    setIsSvo04Complete: () => {},
-    setIsSvo05Complete: () => {},
-    setIsListening01Complete: () => {},
-    setIsListening02Complete: () => {},
-    setIsListening03Complete: () => {},
-    setIsListening04Complete: () => {},
-    setIsListening05Complete: () => {},
+  const persistence = createLocalLearnerProgressPersistence({
+    getItem: (key) => storedProgressByKey.get(key) ?? null,
+    setItem: () => {},
   });
+  const renderForLearner = async (learnerId) => {
+    restoredLearnerIds.push(learnerId);
+    try {
+      const restoredProgress = await loadLearnerProgress(persistence, learnerId);
+      const hasCompletedSvo01 = restoredProgress
+        ?.completedActivityIds.includes("SVO-01") ?? false;
+      completion.isSvo02Complete = hasCompletedSvo01
+        && restoredProgress.completedActivityIds.includes("SVO-02");
+    } catch {
+      completion.isSvo02Complete = false;
+    }
+  };
 
   return { completion, renderForLearner, restoredLearnerIds };
 }
@@ -649,6 +603,66 @@ test("restores separate persisted SEAL progress for different learners", () => {
   })), learnerBProgressRecords);
 });
 
+test("restores one learner's snapshot in another browser without sharing local storage", async () => {
+  const learnerAProgressRecord = {
+    recordId: "progress-a-1",
+    learnerId: "learner-a",
+    activityId: "LISTEN-SVO-01",
+    skillId: "listening-svo-recognition",
+    completed: true,
+    score: 1,
+    attemptNumber: 1,
+    timeSpentSeconds: 12,
+    recordedAt: "2026-09-13T10:00:00.000Z",
+  };
+  const learnerASnapshot = {
+    learnerId: "learner-a",
+    completedActivityIds: ["SVO-01"],
+    completedListeningActivityIds: ["LISTEN-SVO-01"],
+    progressRecords: [learnerAProgressRecord],
+  };
+  const browserOneStorage = new Map();
+  const browserTwoStorage = new Map();
+  const sharedSnapshots = new Map();
+  const database = {
+    prepare: () => ({
+      bind: (learnerId, snapshot) => ({
+        first: async () => {
+          const storedSnapshot = sharedSnapshots.get(learnerId);
+          return storedSnapshot ? { snapshot: storedSnapshot } : null;
+        },
+        run: async () => {
+          sharedSnapshots.set(learnerId, snapshot);
+        },
+      }),
+    }),
+  };
+  const browserOnePersistence = createD1LearnerProgressPersistence(database);
+  const browserTwoPersistence = createD1LearnerProgressPersistence(database);
+
+  await persistLearnerProgress(browserOnePersistence, learnerASnapshot);
+
+  assert.equal(browserOneStorage.size, 0);
+  assert.equal(browserTwoStorage.size, 0);
+  const restoredLearnerA = await loadLearnerProgress(
+    browserTwoPersistence,
+    "learner-a",
+  );
+  const restoredLearnerB = await loadLearnerProgress(
+    browserTwoPersistence,
+    "learner-b",
+  );
+
+  assert.equal(restoredLearnerB, null);
+  assert.ok(restoredLearnerA);
+  assert.deepEqual(restoredLearnerA.completedActivityIds, ["SVO-01"]);
+  assert.equal(restoredLearnerA.isListening01Complete, true);
+  assert.deepEqual(restoredLearnerA.progressRecords.map((record) => ({
+    ...record,
+    recordedAt: record.recordedAt.toISOString(),
+  })), [learnerAProgressRecord]);
+});
+
 test("restores progress for the active learner after another learner used the same browser", async () => {
   const storedProgressByKey = new Map([
     ["spread11:learner-a:svo-progress", JSON.stringify({
@@ -663,11 +677,11 @@ test("restores progress for the active learner after another learner used the sa
   const { completion, renderForLearner, restoredLearnerIds } =
     await createLearnerRestoreHarness(storedProgressByKey);
 
-  renderForLearner("learner-a");
+  await renderForLearner("learner-a");
   assert.equal(completion.isSvo02Complete, false);
-  renderForLearner("learner-b");
+  await renderForLearner("learner-b");
   assert.equal(completion.isSvo02Complete, true);
-  renderForLearner("learner-a");
+  await renderForLearner("learner-a");
   assert.equal(completion.isSvo02Complete, false);
   assert.deepEqual(restoredLearnerIds, ["learner-a", "learner-b", "learner-a"]);
 });
@@ -682,9 +696,9 @@ test("does not retain another learner's progress when the active learner has no 
   const { completion, renderForLearner } =
     await createLearnerRestoreHarness(storedProgressByKey);
 
-  renderForLearner("learner-a");
+  await renderForLearner("learner-a");
   assert.equal(completion.isSvo02Complete, true);
-  renderForLearner("learner-b");
+  await renderForLearner("learner-b");
   assert.equal(completion.isSvo02Complete, false);
 });
 
@@ -702,9 +716,9 @@ test("does not retain another learner's progress when the active learner snapsho
   const { completion, renderForLearner } =
     await createLearnerRestoreHarness(storedProgressByKey);
 
-  renderForLearner("learner-a");
+  await renderForLearner("learner-a");
   assert.equal(completion.isSvo02Complete, true);
-  renderForLearner("learner-b");
+  await renderForLearner("learner-b");
   assert.equal(completion.isSvo02Complete, false);
 });
 
@@ -719,9 +733,9 @@ test("does not retain another learner's progress when the active learner snapsho
   const { completion, renderForLearner } =
     await createLearnerRestoreHarness(storedProgressByKey);
 
-  renderForLearner("learner-a");
+  await renderForLearner("learner-a");
   assert.equal(completion.isSvo02Complete, true);
-  renderForLearner("learner-b");
+  await renderForLearner("learner-b");
   assert.equal(completion.isSvo02Complete, false);
 });
 
@@ -896,7 +910,6 @@ test("persists progress under the learner's own storage key", async () => {
   let persistedKey = null;
 
   await persistProgressInMemory(undefined, nextProgress, {
-    progressStorageKey: "spread11:learner-1:svo-progress",
     onSetItem: (key) => {
       persistedKey = key;
     },

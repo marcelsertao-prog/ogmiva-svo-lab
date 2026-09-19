@@ -24,6 +24,9 @@ import {
   completeListening03Progress,
   completeListening04Progress,
   completeListening05Progress,
+  createLocalLearnerProgressPersistence,
+  loadLearnerProgress,
+  persistLearnerProgress,
   resetListening01Attempt,
   resetListening02Attempt,
   resetListening03Attempt,
@@ -168,7 +171,6 @@ activityEngine.register(listening01Activity);
 const sessionEngine = new DefaultSessionEngine(new EventBus(), activityEngine);
 
 export function LearnerJourney({ learnerId }: { learnerId: string }) {
-  const progressStorageKey = `spread11:${learnerId}:svo-progress`;
   const [screen, setScreen] = useState<Screen>("journey");
   const [isSvo01Complete, setIsSvo01Complete] = useState(false);
   const [isSvo02Complete, setIsSvo02Complete] = useState(false);
@@ -328,7 +330,7 @@ export function LearnerJourney({ learnerId }: { learnerId: string }) {
       : "locked";
 
   useEffect(() => {
-    const restoreProgress = window.setTimeout(() => {
+    const restoreProgress = window.setTimeout(async () => {
       const clearJourneyCompletion = () => {
         setIsSvo01Complete(false);
         setIsSvo02Complete(false);
@@ -343,14 +345,10 @@ export function LearnerJourney({ learnerId }: { learnerId: string }) {
       };
 
       try {
-        const storedProgress = window.localStorage.getItem(progressStorageKey);
-        if (!storedProgress) {
-          clearJourneyCompletion();
-          return;
-        }
-
-        const parsedProgress = JSON.parse(storedProgress) as Partial<StoredLearnerProgress>;
-        const restoredProgress = restoreLearnerProgress(parsedProgress, learnerId);
+        const restoredProgress = await loadLearnerProgress(
+          createLocalLearnerProgressPersistence(window.localStorage),
+          learnerId,
+        );
         if (!restoredProgress) {
           clearJourneyCompletion();
           return;
@@ -381,7 +379,7 @@ export function LearnerJourney({ learnerId }: { learnerId: string }) {
     return () => window.clearTimeout(restoreProgress);
   }, [learnerId]);
 
-  function persistCompletedActivities(completedActivityIds: ActivityId[]) {
+  async function persistCompletedActivities(completedActivityIds: ActivityId[]) {
     const progress: StoredLearnerProgress = {
       learnerId,
       completedActivityIds,
@@ -394,32 +392,15 @@ export function LearnerJourney({ learnerId }: { learnerId: string }) {
       ],
     };
 
-    persistProgress(progress);
+    await persistProgress(progress);
   }
 
-  function persistProgress(progress: StoredLearnerProgress) {
+  async function persistProgress(progress: StoredLearnerProgress) {
     try {
-      const learnerProgressStorageKey = `spread11:${progress.learnerId}:svo-progress`;
-      const storedProgress = window.localStorage.getItem(learnerProgressStorageKey);
-      const restoredProgress = storedProgress
-        ? restoreLearnerProgress(JSON.parse(storedProgress), progress.learnerId)
-        : null;
-      const learnerProgressRecords = progress.progressRecords
-        ?.filter((record) => record.learnerId === progress.learnerId);
-      const nextProgress = restoredProgress
-        ? {
-          ...progress,
-          progressRecords: [
-            ...restoredProgress.progressRecords,
-            ...(learnerProgressRecords ?? []),
-          ],
-        }
-        : {
-          ...progress,
-          ...(learnerProgressRecords ? { progressRecords: learnerProgressRecords } : {}),
-        };
-
-      window.localStorage.setItem(learnerProgressStorageKey, JSON.stringify(nextProgress));
+      await persistLearnerProgress(
+        createLocalLearnerProgressPersistence(window.localStorage),
+        progress,
+      );
     } catch {
       // Keep the learning flow available if browser storage is unavailable.
     }
@@ -635,7 +616,7 @@ export function LearnerJourney({ learnerId }: { learnerId: string }) {
       if (isSvo04Complete) completedActivityIds.push("SVO-04");
       if (isSvo05Complete) completedActivityIds.push("SVO-05");
 
-      persistProgress(completeListening01Progress({
+      await persistProgress(completeListening01Progress({
         learnerId,
         completedActivityIds,
         completedListeningActivityIds: [
@@ -675,7 +656,7 @@ export function LearnerJourney({ learnerId }: { learnerId: string }) {
       if (isSvo04Complete) completedActivityIds.push("SVO-04");
       if (isSvo05Complete) completedActivityIds.push("SVO-05");
 
-      persistProgress(completeListening02Progress({
+      await persistProgress(completeListening02Progress({
         learnerId,
         completedActivityIds,
         completedListeningActivityIds: [
@@ -788,7 +769,7 @@ export function LearnerJourney({ learnerId }: { learnerId: string }) {
       if (isSvo04Complete) completedActivityIds.push("SVO-04");
       if (isSvo05Complete) completedActivityIds.push("SVO-05");
 
-      persistProgress(completeListening03Progress({
+      await persistProgress(completeListening03Progress({
         learnerId,
         completedActivityIds,
         completedListeningActivityIds: [
@@ -914,7 +895,7 @@ export function LearnerJourney({ learnerId }: { learnerId: string }) {
       if (isSvo04Complete) completedActivityIds.push("SVO-04");
       if (isSvo05Complete) completedActivityIds.push("SVO-05");
 
-      persistProgress(completeListening04Progress({
+      await persistProgress(completeListening04Progress({
         learnerId,
         completedActivityIds,
         completedListeningActivityIds: [
@@ -1019,7 +1000,7 @@ export function LearnerJourney({ learnerId }: { learnerId: string }) {
       if (isSvo04Complete) completedActivityIds.push("SVO-04");
       if (isSvo05Complete) completedActivityIds.push("SVO-05");
 
-      persistProgress(completeListening05Progress({
+      await persistProgress(completeListening05Progress({
         learnerId,
         completedActivityIds,
         completedListeningActivityIds: [
@@ -1123,7 +1104,7 @@ export function LearnerJourney({ learnerId }: { learnerId: string }) {
       if (isSvo03Complete) completedActivityIds.push("SVO-03");
       if (isSvo04Complete) completedActivityIds.push("SVO-04");
       if (isSvo05Complete) completedActivityIds.push("SVO-05");
-      persistCompletedActivities(completedActivityIds);
+      await persistCompletedActivities(completedActivityIds);
       window.setTimeout(() => {
         setIsSvo01Complete(true);
         returnToJourney();
@@ -1159,7 +1140,7 @@ export function LearnerJourney({ learnerId }: { learnerId: string }) {
       if (isSvo03Complete) completedActivityIds.push("SVO-03");
       if (isSvo04Complete) completedActivityIds.push("SVO-04");
       if (isSvo05Complete) completedActivityIds.push("SVO-05");
-      persistCompletedActivities(completedActivityIds);
+      await persistCompletedActivities(completedActivityIds);
       window.setTimeout(() => {
         setIsSvo02Complete(true);
         returnToJourney();
@@ -1194,7 +1175,7 @@ export function LearnerJourney({ learnerId }: { learnerId: string }) {
       const completedActivityIds: ActivityId[] = ["SVO-01", "SVO-02", "SVO-03"];
       if (isSvo04Complete) completedActivityIds.push("SVO-04");
       if (isSvo05Complete) completedActivityIds.push("SVO-05");
-      persistCompletedActivities(completedActivityIds);
+      await persistCompletedActivities(completedActivityIds);
       window.setTimeout(() => {
         setIsSvo03Complete(true);
         returnToJourney();
@@ -1228,7 +1209,7 @@ export function LearnerJourney({ learnerId }: { learnerId: string }) {
     if (assessment.correct) {
       const completedActivityIds: ActivityId[] = ["SVO-01", "SVO-02", "SVO-03", "SVO-04"];
       if (isSvo05Complete) completedActivityIds.push("SVO-05");
-      persistCompletedActivities(completedActivityIds);
+      await persistCompletedActivities(completedActivityIds);
       window.setTimeout(() => {
         setIsSvo04Complete(true);
         returnToJourney();
@@ -1264,7 +1245,7 @@ export function LearnerJourney({ learnerId }: { learnerId: string }) {
 
     const isFinalItem = masteryIndex === masteryItems.length - 1;
     if (isFinalItem) {
-      persistCompletedActivities(["SVO-01", "SVO-02", "SVO-03", "SVO-04", "SVO-05"]);
+      await persistCompletedActivities(["SVO-01", "SVO-02", "SVO-03", "SVO-04", "SVO-05"]);
       window.setTimeout(() => {
         setIsSvo05Complete(true);
         returnToJourney();
