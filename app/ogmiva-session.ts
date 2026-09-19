@@ -61,6 +61,26 @@ export async function createOgmivaSession(learnerId: string) {
   return { token, expiresAt, maxAge: SESSION_DURATION_SECONDS };
 }
 
+export async function createOgmivaSessionResponse(
+  learnerId: string,
+): Promise<Response> {
+  const session = await createOgmivaSession(learnerId);
+  const cookie = [
+    `${SESSION_COOKIE_NAME}=${session.token}`,
+    "HttpOnly",
+    "Secure",
+    "SameSite=Lax",
+    "Path=/",
+    `Max-Age=${session.maxAge}`,
+    `Expires=${new Date(session.expiresAt).toUTCString()}`,
+  ].join("; ");
+
+  return new Response(null, {
+    status: 204,
+    headers: { "set-cookie": cookie },
+  });
+}
+
 function getOgmivaSessionDatabase(): D1OgmivaSessionDatabase {
   const requestContext = getRequestExecutionContext() as
     | OgmivaSessionRequestContext

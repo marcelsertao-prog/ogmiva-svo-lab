@@ -481,6 +481,96 @@ test("issues a secure Ogmiva session for an authenticated associated learner", a
   assert.ok(typeof expiresAt === "string" && expiresAt.length > 0);
 });
 
+test("issues a secure Ogmiva session for a provisioned learner account with valid credentials", async () => {
+  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
+  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
+  const { default: worker } = await import(workerUrl.href);
+  const loginId = "school-user-2";
+  const credential = "correct learner credential";
+  const iterations = 600_000;
+  const salt = new TextEncoder().encode("ogmiva-test-salt");
+  const credentialKey = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(credential),
+    "PBKDF2",
+    false,
+    ["deriveBits"],
+  );
+  const credentialHash = new Uint8Array(await crypto.subtle.deriveBits({
+    name: "PBKDF2",
+    hash: "SHA-256",
+    salt,
+    iterations,
+  }, credentialKey, 256));
+  const credentialVerifier = [
+    "pbkdf2-sha256",
+    iterations,
+    Buffer.from(salt).toString("base64url"),
+    Buffer.from(credentialHash).toString("base64url"),
+  ].join("$");
+  const lookedUpLoginIds = [];
+  const savedSessions = [];
+  const response = await worker.fetch(
+    new Request("http://localhost/api/learner-login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        loginId,
+        credential,
+        learnerId: "learner-chosen-by-client",
+      }),
+    }),
+    {
+      ASSETS: {
+        fetch: async () => new Response("Not found", { status: 404 }),
+      },
+      DB: {
+        prepare: (query) => ({
+          bind: (...values) => ({
+            first: async () => {
+              if (!/FROM learner_accounts/.test(query)) return null;
+
+              lookedUpLoginIds.push(values[0]);
+              return {
+                learnerId: "learner-2",
+                credentialVerifier,
+              };
+            },
+            run: async () => {
+              if (/INSERT INTO learner_sessions/.test(query)) {
+                savedSessions.push(values);
+              }
+            },
+          }),
+        }),
+      },
+    },
+    {
+      waitUntil() {},
+      passThroughOnException() {},
+    },
+  );
+
+  assert.equal(response.status, 204);
+  assert.deepEqual(lookedUpLoginIds, [loginId]);
+  const setCookie = response.headers.get("set-cookie");
+  assert.ok(setCookie);
+  assert.match(setCookie, /^ogmiva_session=[^;]+/);
+  assert.match(setCookie, /;\s*HttpOnly(?:;|$)/i);
+  assert.match(setCookie, /;\s*Secure(?:;|$)/i);
+  assert.match(setCookie, /;\s*SameSite=Lax(?:;|$)/i);
+  assert.match(setCookie, /;\s*Path=\/(?:;|$)/i);
+
+  const sessionToken = setCookie.match(/^ogmiva_session=([^;]+)/)?.[1];
+  assert.ok(sessionToken);
+  assert.equal(savedSessions.length, 1);
+  const [storedTokenRepresentation, learnerId, expiresAt] = savedSessions[0];
+  assert.notEqual(storedTokenRepresentation, sessionToken);
+  assert.equal(learnerId, "learner-2");
+  assert.notEqual(learnerId, "learner-chosen-by-client");
+  assert.ok(typeof expiresAt === "string" && expiresAt.length > 0);
+});
+
 test("renders the journey for the configured returning learner", async () => {
   const response = await fetchRenderedHome({
     "oai-authenticated-user-id": "external-user-2",
