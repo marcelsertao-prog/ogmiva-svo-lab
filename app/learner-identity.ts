@@ -6,7 +6,10 @@ type LearnerIdLookup = (
 export function createConfiguredLearnerIdLookup(
   association: { externalUserId: string; learnerId: string },
 ): LearnerIdLookup {
-  return async () => association.learnerId;
+  return async (externalUserId) =>
+    externalUserId === association.externalUserId
+      ? association.learnerId
+      : null;
 }
 
 export function getActiveLearnerId(): string;

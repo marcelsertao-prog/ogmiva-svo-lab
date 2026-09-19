@@ -552,6 +552,18 @@ test("resolves the configured learner association for a known external user", as
   assert.equal(learnerId, "learner-1");
 });
 
+test("does not resolve the configured learner association for a different external user", async () => {
+  const findLearnerIdByExternalUserId =
+    createConfiguredLearnerIdLookup({
+      externalUserId: "external-user-1",
+      learnerId: "learner-1",
+    });
+
+  const learnerId = await findLearnerIdByExternalUserId("external-user-2");
+
+  assert.equal(learnerId, null);
+});
+
 test("restores separate persisted SEAL progress for different learners", () => {
   const learnerAProgressRecords = [{
     recordId: "progress-a-1",
