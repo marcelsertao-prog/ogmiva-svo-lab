@@ -8,6 +8,7 @@ import { createSubmitAnswerInteraction } from "@seal-sdk/interaction";
 import { DefaultProgressEngine } from "@seal-sdk/progress";
 import { DefaultSessionEngine, type SessionState } from "@seal-sdk/session";
 import { useEffect, useMemo, useState } from "react";
+import { persistLearnerJourneyProgress } from "./learner-progress-client";
 import { checkListening01Answer, listening01Activity } from "./listening-01";
 import {
   canUnlockListening01,
@@ -26,7 +27,6 @@ import {
   completeListening05Progress,
   createLocalLearnerProgressPersistence,
   loadLearnerProgress,
-  persistLearnerProgress,
   resetListening01Attempt,
   resetListening02Attempt,
   resetListening03Attempt,
@@ -452,14 +452,7 @@ export function LearnerJourney({
   }
 
   async function persistProgress(progress: StoredLearnerProgress) {
-    try {
-      await persistLearnerProgress(
-        createLocalLearnerProgressPersistence(window.localStorage),
-        progress,
-      );
-    } catch {
-      // Keep the learning flow available if browser storage is unavailable.
-    }
+    await persistLearnerJourneyProgress(window.localStorage, progress);
   }
 
   function addToAnswer(tile: Tile) {

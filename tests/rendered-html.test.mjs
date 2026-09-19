@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { registerHooks } from "node:module";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
 
@@ -466,6 +467,62 @@ test("saves completed Listening 01 progress under the authenticated resolved lea
     completedListeningActivityIds: ["LISTEN-SVO-01"],
     progressRecords: [{ ...progressRecord, learnerId: "learner-2" }],
   });
+});
+
+test("sends learner journey progress to the authenticated persistence endpoint", async (t) => {
+  const hooks = registerHooks({
+    resolve(specifier, context, nextResolve) {
+      if (
+        specifier === "./local-progress"
+        && context.parentURL?.includes("/app/learner-progress-client.ts")
+      ) {
+        return nextResolve("./local-progress.ts", context);
+      }
+
+      return nextResolve(specifier, context);
+    },
+  });
+  const { persistLearnerJourneyProgress } = await import(
+    "../app/learner-progress-client.ts"
+  );
+  hooks.deregister();
+  const requests = [];
+  t.mock.method(globalThis, "fetch", async (input, init) => {
+    const request = input instanceof Request
+      ? input
+      : new Request(new URL(String(input), "http://localhost"), init);
+    requests.push(request);
+    return new Response(null, { status: 204 });
+  });
+  const storedProgress = new Map();
+  const snapshot = {
+    learnerId: "learner-2",
+    completedActivityIds: ["SVO-01"],
+    completedListeningActivityIds: ["LISTEN-SVO-01"],
+    progressRecords: [{
+      recordId: "progress-listening-01-1",
+      learnerId: "learner-2",
+      activityId: "LISTEN-SVO-01",
+      skillId: "listening-svo-recognition",
+      completed: true,
+      score: 1,
+      attemptNumber: 1,
+      timeSpentSeconds: 12,
+      recordedAt: "2026-09-14T10:00:00.000Z",
+    }],
+  };
+
+  await persistLearnerJourneyProgress({
+    getItem: (key) => storedProgress.get(key) ?? null,
+    setItem: (key, value) => storedProgress.set(key, value),
+  }, snapshot);
+
+  assert.equal(requests.length, 1);
+  const [request] = requests;
+  assert.equal(request.url, "http://localhost/api/learner-progress");
+  assert.equal(request.method, "POST");
+  assert.equal(request.headers.get("content-type"), "application/json");
+  assert.deepEqual(await request.json(), snapshot);
 });
 
 test("does not render a learner journey when the external identity has no learner association", async () => {
