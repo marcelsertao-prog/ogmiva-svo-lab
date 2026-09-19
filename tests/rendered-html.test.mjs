@@ -13,6 +13,7 @@ import {
   checkListening01Answer,
   listening01Activity,
 } from "../app/listening-01.ts";
+import { resolveLearnerId } from "../app/learner-identity.ts";
 import {
   canUnlockListening01,
   canUnlockListening02,
@@ -466,6 +467,17 @@ test("keeps Listening 01 completion separate from attempt feedback", () => {
   feedback = resetState.feedback;
   assert.equal(feedback, "idle");
   assert.equal(resetState.isListening01Complete, true);
+});
+
+test("resolves the existing learnerId for an identified returning user", async () => {
+  const learnerId = await resolveLearnerId(
+    { userId: "external-user-1" },
+    async (externalUserId) => externalUserId === "external-user-1"
+      ? "learner-1"
+      : null,
+  );
+
+  assert.equal(learnerId, "learner-1");
 });
 
 test("restores separate persisted SEAL progress for different learners", () => {
