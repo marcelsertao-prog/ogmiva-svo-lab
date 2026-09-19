@@ -48,12 +48,25 @@ export async function POST(request: Request) {
     return new Response(null, { status: 400 });
   }
 
-  await provisionLearnerAccount({
-    database: requestContext.DB,
-    loginId: body.loginId,
-    learnerId: body.learnerId,
-    credential: body.credential,
-  });
+  try {
+    await provisionLearnerAccount({
+      database: requestContext.DB,
+      loginId: body.loginId,
+      learnerId: body.learnerId,
+      credential: body.credential,
+    });
+  } catch (error) {
+    if (
+      error instanceof Error
+      && error.message.includes(
+        "UNIQUE constraint failed: learner_accounts.login_id",
+      )
+    ) {
+      return new Response(null, { status: 409 });
+    }
+
+    throw error;
+  }
 
   return new Response(null, { status: 204 });
 }

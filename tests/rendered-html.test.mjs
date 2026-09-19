@@ -852,6 +852,59 @@ test("rejects an invalid administrative provisioning payload without creating an
   );
 });
 
+test("rejects reprovisioning an existing login without changing its learner association", async (t) => {
+  const { database, miniflare, provisioningSecret } =
+    await createAdministrativeProvisioningHarness(t, "existing-login");
+  const loginId = "school-user-2";
+  const originalCredentialVerifier = await createPbkdf2CredentialVerifier(
+    "original credential",
+  );
+  await database.prepare(`
+    INSERT INTO learner_accounts (
+      login_id,
+      learner_id,
+      credential_hash
+    ) VALUES (?, ?, ?)
+  `).bind(loginId, "learner-2", originalCredentialVerifier).run();
+
+  const response = await miniflare.dispatchFetch(
+    "http://localhost/api/admin/learner-accounts",
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${provisioningSecret}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        loginId,
+        learnerId: "learner-3",
+        credential: "replacement credential",
+      }),
+    },
+  );
+
+  const storedAccount = await database.prepare(`
+    SELECT
+      learner_id AS learnerId,
+      credential_hash AS credentialVerifier
+    FROM learner_accounts
+    WHERE login_id = ?
+  `).bind(loginId).first();
+  assert.deepEqual(
+    {
+      status: response.status,
+      storedAccount,
+    },
+    {
+      status: 409,
+      storedAccount: {
+        learnerId: "learner-2",
+        credentialVerifier: originalCredentialVerifier,
+      },
+    },
+  );
+});
+
 test("renders the journey for the configured returning learner", async () => {
   const response = await fetchRenderedHome({
     "oai-authenticated-user-id": "external-user-2",
