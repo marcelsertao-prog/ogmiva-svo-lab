@@ -22,6 +22,7 @@ import {
   getActiveLearnerId,
   resolveLearnerId,
 } from "../app/learner-identity.ts";
+import { createPbkdf2CredentialVerifier } from "../app/learner-credential.ts";
 import {
   canUnlockListening01,
   canUnlockListening02,
@@ -75,31 +76,6 @@ import {
   restartListening05,
   startListening05Session,
 } from "../app/listening-05.ts";
-
-async function createPbkdf2CredentialVerifier(credential, saltText) {
-  const iterations = 600_000;
-  const salt = new TextEncoder().encode(saltText);
-  const credentialKey = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(credential),
-    "PBKDF2",
-    false,
-    ["deriveBits"],
-  );
-  const credentialHash = new Uint8Array(await crypto.subtle.deriveBits({
-    name: "PBKDF2",
-    hash: "SHA-256",
-    salt,
-    iterations,
-  }, credentialKey, 256));
-
-  return [
-    "pbkdf2-sha256",
-    iterations,
-    Buffer.from(salt).toString("base64url"),
-    Buffer.from(credentialHash).toString("base64url"),
-  ].join("$");
-}
 
 async function importAppModuleWithLocalProgress(modulePath, moduleName) {
   const hooks = registerHooks({
@@ -517,7 +493,7 @@ test("issues a secure Ogmiva session for a provisioned learner account with vali
   const credential = "correct learner credential";
   const credentialVerifier = await createPbkdf2CredentialVerifier(
     credential,
-    "ogmiva-test-salt",
+    new TextEncoder().encode("ogmiva-test-salt"),
   );
   const lookedUpLoginIds = [];
   const savedSessions = [];
@@ -615,7 +591,7 @@ test("logs in with a PBKDF2 learner account provisioned in an empty migrated D1"
   const credential = "correct learner credential";
   const credentialVerifier = await createPbkdf2CredentialVerifier(
     credential,
-    "ogmiva-integration-test-salt",
+    new TextEncoder().encode("ogmiva-integration-test-salt"),
   );
 
   await database.prepare(`
@@ -660,6 +636,84 @@ test("logs in with a PBKDF2 learner account provisioned in an empty migrated D1"
     FROM learner_sessions
   `).first();
   assert.deepEqual(storedSession, { learnerId: "learner-2" });
+});
+
+test("provisions one learner account locally without storing or returning its credential", async (t) => {
+  const miniflare = new Miniflare({
+    modules: true,
+    script: `export default {
+      fetch() { return new Response(null, { status: 204 }); }
+    }`,
+    compatibilityDate: "2026-05-15",
+    d1Databases: { DB: `learner-provisioning-${process.pid}-${Date.now()}` },
+  });
+  t.after(() => miniflare.dispose());
+
+  const database = await miniflare.getD1Database("DB");
+  const migrationFiles = (await readdir(
+    new URL("../drizzle", import.meta.url),
+  ))
+    .filter((fileName) => fileName.endsWith(".sql"))
+    .sort();
+  for (const migrationFile of migrationFiles) {
+    const migration = await readFile(
+      new URL(`../drizzle/${migrationFile}`, import.meta.url),
+      "utf8",
+    );
+    await database.prepare(migration.trim()).run();
+  }
+
+  const provisionerUrl = new URL(
+    "../scripts/provision-learner-account.mjs",
+    import.meta.url,
+  );
+  let provisioningModule = {};
+  try {
+    provisioningModule = await import(provisionerUrl.href);
+  } catch (error) {
+    if (
+      error?.code !== "ERR_MODULE_NOT_FOUND"
+      || !error.message.includes(fileURLToPath(provisionerUrl))
+    ) {
+      throw error;
+    }
+  }
+
+  const { provisionLearnerAccount } = provisioningModule;
+  assert.equal(
+    typeof provisionLearnerAccount,
+    "function",
+    "the local administrative learner-account provisioner is not implemented",
+  );
+
+  const loginId = "school-user-2";
+  const learnerId = "learner-2";
+  const credential = "credential supplied only to the provisioner";
+  const result = await provisionLearnerAccount({
+    database,
+    loginId,
+    learnerId,
+    credential,
+  });
+
+  const storedAccount = await database.prepare(`
+    SELECT
+      login_id AS loginId,
+      learner_id AS learnerId,
+      credential_hash AS credentialHash
+    FROM learner_accounts
+    WHERE login_id = ?
+  `).bind(loginId).first();
+
+  assert.equal(storedAccount?.loginId, loginId);
+  assert.equal(storedAccount?.learnerId, learnerId);
+  assert.match(
+    storedAccount?.credentialHash ?? "",
+    /^pbkdf2-sha256\$600000\$[A-Za-z0-9_-]+\$[A-Za-z0-9_-]+$/,
+  );
+  assert.notEqual(storedAccount?.credentialHash, credential);
+  assert.ok(!JSON.stringify(storedAccount).includes(credential));
+  assert.ok(!JSON.stringify(result ?? null).includes(credential));
 });
 
 test("renders the journey for the configured returning learner", async () => {
