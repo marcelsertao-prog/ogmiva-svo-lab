@@ -46,6 +46,13 @@ export function loadD1LearnerProgress(learnerId: string) {
   return load;
 }
 
+export function saveD1LearnerProgress(snapshot: StoredLearnerProgress) {
+  const requestContext = getD1LearnerProgressRequestContext();
+
+  return createD1LearnerProgressPersistence(requestContext.DB)
+    .save(snapshot.learnerId, snapshot);
+}
+
 export function createD1LearnerProgressPersistence(
   database: D1LearnerProgressDatabase,
 ): LearnerProgressPersistence {

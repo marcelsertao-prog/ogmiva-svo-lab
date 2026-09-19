@@ -402,6 +402,72 @@ test("restores D1 progress for the authenticated resolved learner", async () => 
   assert.match(html, /progress-learner-2-1/);
 });
 
+test("saves completed Listening 01 progress under the authenticated resolved learner", async () => {
+  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
+  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
+  const { default: worker } = await import(workerUrl.href);
+  const savedSnapshots = [];
+  const progressRecord = {
+    recordId: "progress-listening-01-1",
+    learnerId: "learner-chosen-by-client",
+    activityId: "LISTEN-SVO-01",
+    skillId: "listening-svo-recognition",
+    completed: true,
+    score: 1,
+    attemptNumber: 1,
+    timeSpentSeconds: 12,
+    recordedAt: "2026-09-14T10:00:00.000Z",
+  };
+  const response = await worker.fetch(
+    new Request("http://localhost/api/learner-progress", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "oai-authenticated-user-id": "external-user-2",
+        "oai-authenticated-user-email": "returning@example.com",
+      },
+      body: JSON.stringify({
+        learnerId: "learner-chosen-by-client",
+        completedActivityIds: ["SVO-01"],
+        completedListeningActivityIds: ["LISTEN-SVO-01"],
+        progressRecords: [progressRecord],
+      }),
+    }),
+    {
+      ASSETS: {
+        fetch: async () => new Response("Not found", { status: 404 }),
+      },
+      DB: {
+        prepare: (query) => ({
+          bind: (...values) => ({
+            first: async () => null,
+            run: async () => {
+              if (/INSERT INTO learner_progress/.test(query)) {
+                savedSnapshots.push(values);
+              }
+            },
+          }),
+        }),
+      },
+    },
+    {
+      waitUntil() {},
+      passThroughOnException() {},
+    },
+  );
+
+  assert.equal(response.status, 204);
+  assert.equal(savedSnapshots.length, 1);
+  const [savedLearnerId, savedSnapshotJson] = savedSnapshots[0];
+  assert.equal(savedLearnerId, "learner-2");
+  assert.deepEqual(JSON.parse(savedSnapshotJson), {
+    learnerId: "learner-2",
+    completedActivityIds: ["SVO-01"],
+    completedListeningActivityIds: ["LISTEN-SVO-01"],
+    progressRecords: [{ ...progressRecord, learnerId: "learner-2" }],
+  });
+});
+
 test("does not render a learner journey when the external identity has no learner association", async () => {
   const response = await fetchRenderedHome({
     "oai-authenticated-user-id": "unassociated-external-user",
