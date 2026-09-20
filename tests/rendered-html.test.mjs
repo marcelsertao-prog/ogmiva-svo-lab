@@ -22,7 +22,11 @@ import {
   getActiveLearnerId,
   resolveLearnerId,
 } from "../app/learner-identity.ts";
-import { createPbkdf2CredentialVerifier } from "../app/learner-credential.ts";
+import { provisionLearnerAccount } from "../app/learner-account.ts";
+import {
+  createPbkdf2CredentialVerifier,
+  verifyPbkdf2Credential,
+} from "../app/learner-credential.ts";
 import {
   canUnlockListening01,
   canUnlockListening02,
@@ -746,11 +750,76 @@ test("provisions one learner account locally without storing or returning its cr
   assert.equal(storedAccount?.learnerId, learnerId);
   assert.match(
     storedAccount?.credentialHash ?? "",
-    /^pbkdf2-sha256\$600000\$[A-Za-z0-9_-]+\$[A-Za-z0-9_-]+$/,
+    /^pbkdf2-sha256\$100000\$[A-Za-z0-9_-]+\$[A-Za-z0-9_-]+$/,
   );
   assert.notEqual(storedAccount?.credentialHash, credential);
   assert.ok(!JSON.stringify(storedAccount).includes(credential));
   assert.ok(!JSON.stringify(result ?? null).includes(credential));
+});
+
+test("provisions and authenticates a learner account within the Cloudflare Worker PBKDF2 limit", { concurrency: false }, async () => {
+  const cryptoDescriptor = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+  const runtimeCrypto = globalThis.crypto;
+  const storedAccounts = [];
+  const credential = "credential accepted by the Worker runtime";
+
+  Object.defineProperty(globalThis, "crypto", {
+    configurable: true,
+    value: {
+      getRandomValues: runtimeCrypto.getRandomValues.bind(runtimeCrypto),
+      subtle: {
+        importKey: runtimeCrypto.subtle.importKey.bind(runtimeCrypto.subtle),
+        deriveBits: (algorithm, key, length) => {
+          if (algorithm.iterations > 100_000) {
+            throw new DOMException(
+              `Pbkdf2 failed: iteration counts above 100000 are not supported (requested ${algorithm.iterations}).`,
+              "NotSupportedError",
+            );
+          }
+
+          return runtimeCrypto.subtle.deriveBits(algorithm, key, length);
+        },
+      },
+    },
+  });
+
+  try {
+    await provisionLearnerAccount({
+      database: {
+        prepare: () => ({
+          bind: (...values) => ({
+            run: async () => storedAccounts.push(values),
+          }),
+        }),
+      },
+      loginId: "school-user-2",
+      learnerId: "learner-2",
+      credential,
+    });
+
+    assert.equal(storedAccounts.length, 1);
+    const [loginId, learnerId, credentialVerifier] = storedAccounts[0];
+    assert.equal(loginId, "school-user-2");
+    assert.equal(learnerId, "learner-2");
+    assert.match(
+      credentialVerifier,
+      /^pbkdf2-sha256\$100000\$[A-Za-z0-9_-]+\$[A-Za-z0-9_-]+$/,
+    );
+    assert.equal(
+      await verifyPbkdf2Credential(credential, credentialVerifier),
+      true,
+    );
+    assert.equal(
+      await verifyPbkdf2Credential("incorrect credential", credentialVerifier),
+      false,
+    );
+  } finally {
+    if (cryptoDescriptor) {
+      Object.defineProperty(globalThis, "crypto", cryptoDescriptor);
+    } else {
+      delete globalThis.crypto;
+    }
+  }
 });
 
 test("rejects an invalid administrative provisioning secret without creating an account", async (t) => {
@@ -813,7 +882,7 @@ test("provisions one learner account with the correct administrative secret", as
   assert.equal(storedAccount?.learnerId, learnerId);
   assert.match(
     storedAccount?.credentialHash ?? "",
-    /^pbkdf2-sha256\$600000\$[A-Za-z0-9_-]+\$[A-Za-z0-9_-]+$/,
+    /^pbkdf2-sha256\$100000\$[A-Za-z0-9_-]+\$[A-Za-z0-9_-]+$/,
   );
   assert.notEqual(storedAccount?.credentialHash, credential);
   assert.ok(!JSON.stringify(storedAccount).includes(credential));
