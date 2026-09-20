@@ -404,15 +404,19 @@ test("renders the initial SVO journey", async () => {
   );
 });
 
-test("redirects a visitor without external identity to authentication", async () => {
+test("presents a secure school login to a visitor without an Ogmiva session or ChatGPT identity", async () => {
   const response = await fetchRenderedHome();
 
-  assert.equal(response.status, 307);
-  const location = response.headers.get("location");
-  assert.ok(location);
-  const redirectUrl = new URL(location);
-  assert.equal(redirectUrl.pathname, "/signin-with-chatgpt");
-  assert.equal(redirectUrl.searchParams.get("return_to"), "/");
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("location"), null);
+
+  const html = await response.text();
+  assert.match(html, /<form\b/);
+  assert.match(html, /name="loginId"/);
+  assert.match(html, /name="credential"/);
+  assert.match(html, /type="password"[^>]*name="credential"|name="credential"[^>]*type="password"/);
+  assert.doesNotMatch(html, /name="learnerId"/);
+  assert.doesNotMatch(html, /data-stage-id=/);
 });
 
 test("restores learner progress from a valid Ogmiva session", async () => {
