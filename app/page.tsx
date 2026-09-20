@@ -7,11 +7,18 @@ import {
 } from "./learner-progress-d1";
 import { getOgmivaSessionLearnerId } from "./ogmiva-session";
 
-export default async function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams?: Promise<{ login?: string }>;
+}) {
   const sessionLearnerId = await getOgmivaSessionLearnerId();
   const learnerId = sessionLearnerId ?? await resolveChatGPTLearnerId();
 
-  if (!learnerId) return <SchoolLoginForm />;
+  if (!learnerId) {
+    const loginFailed = (await searchParams)?.login === "failed";
+    return <SchoolLoginForm loginFailed={loginFailed} />;
+  }
 
   const initialProgress = await loadD1LearnerProgress(learnerId);
 
@@ -33,10 +40,15 @@ async function resolveChatGPTLearnerId() {
   );
 }
 
-function SchoolLoginForm() {
+function SchoolLoginForm({ loginFailed }: { loginFailed: boolean }) {
   return (
     <main>
       <h1>Entrar no Ogmiva</h1>
+      {loginFailed ? (
+        <p role="alert">
+          Não foi possível entrar. Verifique seus dados e tente novamente.
+        </p>
+      ) : null}
       <form action="/api/learner-login" method="post">
         <label>
           Identificador escolar

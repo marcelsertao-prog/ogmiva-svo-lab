@@ -39,7 +39,14 @@ export async function POST(request: Request) {
     body.loginId,
     body.credential,
   );
-  if (!learnerId) return new Response(null, { status: 401 });
+  if (!learnerId) {
+    return isFormSubmission
+      ? new Response(null, {
+        status: 303,
+        headers: { location: "/?login=failed" },
+      })
+      : new Response(null, { status: 401 });
+  }
 
   const response = await createOgmivaSessionResponse(learnerId);
   if (!isFormSubmission) return response;

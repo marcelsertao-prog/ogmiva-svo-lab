@@ -760,6 +760,61 @@ test("submits the school login form and restores the provisioned learner journey
   assert.match(html, /progress-learner-2-school-login/);
 });
 
+test("returns an invalid school credential to the login form without creating a session", async (t) => {
+  const { database, miniflare } = await createMigratedOgmivaHarness(
+    t,
+    "learner-invalid-form-login",
+  );
+  const loginId = "school-user-2";
+  const credentialVerifier = await createPbkdf2CredentialVerifier(
+    "correct learner credential",
+    new TextEncoder().encode("ogmiva-invalid-form-login-test-salt"),
+  );
+
+  await database.prepare(`
+    INSERT INTO learner_accounts (
+      login_id,
+      learner_id,
+      credential_hash
+    ) VALUES (?, ?, ?)
+  `).bind(loginId, "learner-2", credentialVerifier).run();
+
+  const loginResponse = await miniflare.dispatchFetch(
+    "http://localhost/api/learner-login",
+    {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        loginId,
+        credential: "incorrect learner credential",
+      }).toString(),
+      redirect: "manual",
+    },
+  );
+
+  assert.equal(loginResponse.status, 303);
+  assert.equal(loginResponse.headers.get("location"), "/?login=failed");
+  assert.equal(loginResponse.headers.get("set-cookie"), null);
+  const storedSessions = await database.prepare(`
+    SELECT COUNT(*) AS sessionCount
+    FROM learner_sessions
+  `).first();
+  assert.equal(storedSessions?.sessionCount, 0);
+
+  const formResponse = await miniflare.dispatchFetch(
+    new URL(loginResponse.headers.get("location"), "http://localhost"),
+    { headers: { accept: "text/html" } },
+  );
+
+  assert.equal(formResponse.status, 200);
+  const html = await formResponse.text();
+  assert.match(html, /Não foi possível entrar\. Verifique seus dados e tente novamente\./);
+  assert.match(html, /name="loginId"/);
+  assert.match(html, /name="credential"/);
+  assert.doesNotMatch(html, /identificador não encontrado|credencial incorreta/i);
+  assert.doesNotMatch(html, /data-stage-id=/);
+});
+
 test("provisions one learner account locally without storing or returning its credential", async (t) => {
   const miniflare = new Miniflare({
     modules: true,
