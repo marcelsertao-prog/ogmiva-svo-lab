@@ -182,27 +182,7 @@ async function fetchRenderedHome(headers = {}, bindings = {}) {
   );
 }
 
-async function createAdministrativeProvisioningHarness(t, databaseLabel) {
-  const distServerPath = fileURLToPath(new URL("../dist/server", import.meta.url));
-  const provisioningSecret = "correct administrative secret";
-  const miniflare = new Miniflare({
-    rootPath: distServerPath,
-    modulesRoot: distServerPath,
-    modules: true,
-    modulesRules: [
-      { type: "ESModule", include: ["**/*.js", "**/*.mjs"] },
-    ],
-    scriptPath: "index.js",
-    compatibilityDate: "2026-05-15",
-    compatibilityFlags: ["nodejs_compat"],
-    bindings: { OGMIVA_PROVISIONING_SECRET: provisioningSecret },
-    d1Databases: {
-      DB: `learner-admin-${databaseLabel}-${process.pid}-${Date.now()}`,
-    },
-  });
-  t.after(() => miniflare.dispose());
-
-  const database = await miniflare.getD1Database("DB");
+async function applyD1Migrations(database) {
   const migrationFiles = (await readdir(
     new URL("../drizzle", import.meta.url),
   ))
@@ -215,6 +195,42 @@ async function createAdministrativeProvisioningHarness(t, databaseLabel) {
     );
     await database.prepare(migration.trim()).run();
   }
+}
+
+async function createMigratedOgmivaHarness(
+  t,
+  databaseLabel,
+  bindings = {},
+) {
+  const distServerPath = fileURLToPath(new URL("../dist/server", import.meta.url));
+  const miniflare = new Miniflare({
+    rootPath: distServerPath,
+    modulesRoot: distServerPath,
+    modules: true,
+    modulesRules: [
+      { type: "ESModule", include: ["**/*.js", "**/*.mjs"] },
+    ],
+    scriptPath: "index.js",
+    compatibilityDate: "2026-05-15",
+    compatibilityFlags: ["nodejs_compat"],
+    bindings,
+    d1Databases: { DB: `${databaseLabel}-${process.pid}-${Date.now()}` },
+  });
+  t.after(() => miniflare.dispose());
+
+  const database = await miniflare.getD1Database("DB");
+  await applyD1Migrations(database);
+
+  return { database, miniflare };
+}
+
+async function createAdministrativeProvisioningHarness(t, databaseLabel) {
+  const provisioningSecret = "correct administrative secret";
+  const { database, miniflare } = await createMigratedOgmivaHarness(
+    t,
+    `learner-admin-${databaseLabel}`,
+    { OGMIVA_PROVISIONING_SECRET: provisioningSecret },
+  );
 
   return { database, miniflare, provisioningSecret };
 }
@@ -604,33 +620,10 @@ test("issues a secure Ogmiva session for a provisioned learner account with vali
 });
 
 test("logs in with a PBKDF2 learner account provisioned in an empty migrated D1", async (t) => {
-  const distServerPath = fileURLToPath(new URL("../dist/server", import.meta.url));
-  const migrationsPath = fileURLToPath(new URL("../drizzle", import.meta.url));
-  const miniflare = new Miniflare({
-    rootPath: distServerPath,
-    modulesRoot: distServerPath,
-    modules: true,
-    modulesRules: [
-      { type: "ESModule", include: ["**/*.js", "**/*.mjs"] },
-    ],
-    scriptPath: "index.js",
-    compatibilityDate: "2026-05-15",
-    compatibilityFlags: ["nodejs_compat"],
-    d1Databases: { DB: `learner-account-${process.pid}-${Date.now()}` },
-  });
-  t.after(() => miniflare.dispose());
-
-  const database = await miniflare.getD1Database("DB");
-  const migrationFiles = (await readdir(migrationsPath))
-    .filter((fileName) => fileName.endsWith(".sql"))
-    .sort();
-  for (const migrationFile of migrationFiles) {
-    const migration = await readFile(
-      new URL(`../drizzle/${migrationFile}`, import.meta.url),
-      "utf8",
-    );
-    await database.prepare(migration.trim()).run();
-  }
+  const { database, miniflare } = await createMigratedOgmivaHarness(
+    t,
+    "learner-account",
+  );
 
   const loginId = "school-user-2";
   const credential = "correct learner credential";
@@ -683,6 +676,90 @@ test("logs in with a PBKDF2 learner account provisioned in an empty migrated D1"
   assert.deepEqual(storedSession, { learnerId: "learner-2" });
 });
 
+test("submits the school login form and restores the provisioned learner journey", async (t) => {
+  const { database, miniflare } = await createMigratedOgmivaHarness(
+    t,
+    "learner-form-login",
+  );
+
+  const loginId = "school-user-2";
+  const credential = "correct learner credential";
+  const credentialVerifier = await createPbkdf2CredentialVerifier(
+    credential,
+    new TextEncoder().encode("ogmiva-form-login-test-salt"),
+  );
+  const progressRecord = {
+    recordId: "progress-learner-2-school-login",
+    learnerId: "learner-2",
+    activityId: "LISTEN-SVO-01",
+    skillId: "listening-svo-recognition",
+    completed: true,
+    score: 1,
+    attemptNumber: 1,
+    timeSpentSeconds: 12,
+    recordedAt: "2026-09-20T10:00:00.000Z",
+  };
+  const snapshot = {
+    learnerId: "learner-2",
+    completedActivityIds: ["SVO-01"],
+    completedListeningActivityIds: ["LISTEN-SVO-01"],
+    progressRecords: [progressRecord],
+  };
+
+  await database.prepare(`
+    INSERT INTO learner_accounts (
+      login_id,
+      learner_id,
+      credential_hash
+    ) VALUES (?, ?, ?)
+  `).bind(loginId, "learner-2", credentialVerifier).run();
+  await database.prepare(`
+    INSERT INTO learner_progress (
+      learner_id,
+      snapshot,
+      updated_at
+    ) VALUES (?, ?, CURRENT_TIMESTAMP)
+  `).bind("learner-2", JSON.stringify(snapshot)).run();
+
+  const loginResponse = await miniflare.dispatchFetch(
+    "http://localhost/api/learner-login",
+    {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ loginId, credential }).toString(),
+      redirect: "manual",
+    },
+  );
+
+  assert.equal(loginResponse.status, 303);
+  assert.equal(loginResponse.headers.get("location"), "/");
+  const setCookie = loginResponse.headers.get("set-cookie");
+  assert.ok(setCookie);
+  assert.match(setCookie, /^ogmiva_session=[^;]+/);
+  assert.match(setCookie, /;\s*HttpOnly(?:;|$)/i);
+  assert.match(setCookie, /;\s*Secure(?:;|$)/i);
+  assert.match(setCookie, /;\s*SameSite=Lax(?:;|$)/i);
+
+  const journeyResponse = await miniflare.dispatchFetch(
+    "http://localhost/",
+    {
+      headers: {
+        accept: "text/html",
+        cookie: setCookie.split(";", 1)[0],
+      },
+    },
+  );
+
+  assert.equal(journeyResponse.status, 200);
+  const html = await journeyResponse.text();
+  const stageStart = html.indexOf('data-stage-id="SVO-LISTENING-01"');
+  const stageEnd = html.indexOf("</section>", stageStart);
+  const stageHtml = html.slice(stageStart, stageEnd);
+  assert.match(stageHtml, /data-stage-progress="2\/2"/);
+  assert.match(stageHtml, /data-stage-state="complete"/);
+  assert.match(html, /progress-learner-2-school-login/);
+});
+
 test("provisions one learner account locally without storing or returning its credential", async (t) => {
   const miniflare = new Miniflare({
     modules: true,
@@ -695,18 +772,7 @@ test("provisions one learner account locally without storing or returning its cr
   t.after(() => miniflare.dispose());
 
   const database = await miniflare.getD1Database("DB");
-  const migrationFiles = (await readdir(
-    new URL("../drizzle", import.meta.url),
-  ))
-    .filter((fileName) => fileName.endsWith(".sql"))
-    .sort();
-  for (const migrationFile of migrationFiles) {
-    const migration = await readFile(
-      new URL(`../drizzle/${migrationFile}`, import.meta.url),
-      "utf8",
-    );
-    await database.prepare(migration.trim()).run();
-  }
+  await applyD1Migrations(database);
 
   const provisionerUrl = new URL(
     "../scripts/provision-learner-account.mjs",

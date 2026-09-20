@@ -7,9 +7,21 @@ type LearnerLoginRequest = {
 };
 
 export async function POST(request: Request) {
+  const isFormSubmission = request.headers.get("content-type")
+    ?.split(";", 1)[0]
+    .trim()
+    .toLowerCase() === "application/x-www-form-urlencoded";
   let body: LearnerLoginRequest;
   try {
-    body = await request.json() as LearnerLoginRequest;
+    if (isFormSubmission) {
+      const formData = await request.formData();
+      body = {
+        loginId: formData.get("loginId"),
+        credential: formData.get("credential"),
+      };
+    } else {
+      body = await request.json() as LearnerLoginRequest;
+    }
   } catch {
     return new Response(null, { status: 400 });
   }
@@ -29,5 +41,11 @@ export async function POST(request: Request) {
   );
   if (!learnerId) return new Response(null, { status: 401 });
 
-  return createOgmivaSessionResponse(learnerId);
+  const response = await createOgmivaSessionResponse(learnerId);
+  if (!isFormSubmission) return response;
+
+  const headers = new Headers(response.headers);
+  headers.set("location", "/");
+
+  return new Response(null, { status: 303, headers });
 }
