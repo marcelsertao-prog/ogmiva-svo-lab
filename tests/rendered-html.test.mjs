@@ -815,6 +815,98 @@ test("returns an invalid school credential to the login form without creating a 
   assert.doesNotMatch(html, /data-stage-id=/);
 });
 
+test("invalidates only the submitted Ogmiva session and expires its cookie", async (t) => {
+  const { database, miniflare } = await createMigratedOgmivaHarness(
+    t,
+    "learner-logout",
+  );
+  const loginId = "school-user-2";
+  const credential = "correct learner credential";
+  const credentialVerifier = await createPbkdf2CredentialVerifier(
+    credential,
+    new TextEncoder().encode("ogmiva-logout-test-salt"),
+  );
+
+  await database.prepare(`
+    INSERT INTO learner_accounts (
+      login_id,
+      learner_id,
+      credential_hash
+    ) VALUES (?, ?, ?)
+  `).bind(loginId, "learner-2", credentialVerifier).run();
+
+  const logIn = async () => {
+    const response = await miniflare.dispatchFetch(
+      "http://localhost/api/learner-login",
+      {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ loginId, credential }).toString(),
+        redirect: "manual",
+      },
+    );
+    assert.equal(response.status, 303);
+    const setCookie = response.headers.get("set-cookie");
+    assert.ok(setCookie);
+    return setCookie.split(";", 1)[0];
+  };
+
+  const sessionCookieToEnd = await logIn();
+  const sessionCookieToKeep = await logIn();
+  const sessionsBeforeLogout = await database.prepare(`
+    SELECT COUNT(*) AS sessionCount
+    FROM learner_sessions
+  `).first();
+  assert.equal(sessionsBeforeLogout?.sessionCount, 2);
+
+  const logoutResponse = await miniflare.dispatchFetch(
+    "http://localhost/api/learner-logout",
+    {
+      method: "POST",
+      headers: { cookie: sessionCookieToEnd },
+      redirect: "manual",
+    },
+  );
+
+  assert.equal(logoutResponse.status, 303);
+  assert.equal(logoutResponse.headers.get("location"), "/");
+  const expiredCookie = logoutResponse.headers.get("set-cookie");
+  assert.ok(expiredCookie);
+  assert.match(expiredCookie, /^ogmiva_session=;/);
+  assert.match(expiredCookie, /;\s*HttpOnly(?:;|$)/i);
+  assert.match(expiredCookie, /;\s*Secure(?:;|$)/i);
+  assert.match(expiredCookie, /;\s*SameSite=Lax(?:;|$)/i);
+  assert.match(expiredCookie, /;\s*Path=\/(?:;|$)/i);
+  assert.match(expiredCookie, /;\s*Max-Age=0(?:;|$)/i);
+  assert.match(expiredCookie, /;\s*Expires=Thu, 01 Jan 1970 00:00:00 GMT(?:;|$)/i);
+
+  const sessionsAfterLogout = await database.prepare(`
+    SELECT COUNT(*) AS sessionCount
+    FROM learner_sessions
+  `).first();
+  assert.equal(sessionsAfterLogout?.sessionCount, 1);
+
+  const endedSessionResponse = await miniflare.dispatchFetch(
+    "http://localhost/",
+    {
+      headers: { accept: "text/html", cookie: sessionCookieToEnd },
+    },
+  );
+  assert.equal(endedSessionResponse.status, 200);
+  const endedSessionHtml = await endedSessionResponse.text();
+  assert.match(endedSessionHtml, /name="loginId"/);
+  assert.doesNotMatch(endedSessionHtml, /data-stage-id=/);
+
+  const keptSessionResponse = await miniflare.dispatchFetch(
+    "http://localhost/",
+    {
+      headers: { accept: "text/html", cookie: sessionCookieToKeep },
+    },
+  );
+  assert.equal(keptSessionResponse.status, 200);
+  assert.match(await keptSessionResponse.text(), /data-stage-id=/);
+});
+
 test("provisions one learner account locally without storing or returning its credential", async (t) => {
   const miniflare = new Miniflare({
     modules: true,

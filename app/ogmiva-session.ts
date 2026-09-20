@@ -65,20 +65,65 @@ export async function createOgmivaSessionResponse(
   learnerId: string,
 ): Promise<Response> {
   const session = await createOgmivaSession(learnerId);
-  const cookie = [
-    `${SESSION_COOKIE_NAME}=${session.token}`,
-    "HttpOnly",
-    "Secure",
-    "SameSite=Lax",
-    "Path=/",
-    `Max-Age=${session.maxAge}`,
-    `Expires=${new Date(session.expiresAt).toUTCString()}`,
-  ].join("; ");
+  const cookie = serializeOgmivaSessionCookie(session);
 
   return new Response(null, {
     status: 204,
     headers: { "set-cookie": cookie },
   });
+}
+
+export async function createOgmivaLogoutResponse(): Promise<Response> {
+  const requestHeaders = await headers();
+  const sessionToken = readCookie(
+    requestHeaders.get("cookie"),
+    SESSION_COOKIE_NAME,
+  );
+
+  if (sessionToken) {
+    const storedSessionId = await hashSessionToken(sessionToken);
+    await getOgmivaSessionDatabase()
+      .prepare(`
+        DELETE FROM learner_sessions
+        WHERE session_id = ?
+      `)
+      .bind(storedSessionId)
+      .run();
+  }
+
+  const cookie = serializeOgmivaSessionCookie({
+    token: "",
+    maxAge: 0,
+    expiresAt: new Date(0).toISOString(),
+  });
+
+  return new Response(null, {
+    status: 303,
+    headers: {
+      location: "/",
+      "set-cookie": cookie,
+    },
+  });
+}
+
+function serializeOgmivaSessionCookie({
+  token,
+  maxAge,
+  expiresAt,
+}: {
+  token: string;
+  maxAge: number;
+  expiresAt: string;
+}): string {
+  return [
+    `${SESSION_COOKIE_NAME}=${token}`,
+    "HttpOnly",
+    "Secure",
+    "SameSite=Lax",
+    "Path=/",
+    `Max-Age=${maxAge}`,
+    `Expires=${new Date(expiresAt).toUTCString()}`,
+  ].join("; ");
 }
 
 function getOgmivaSessionDatabase(): D1OgmivaSessionDatabase {
