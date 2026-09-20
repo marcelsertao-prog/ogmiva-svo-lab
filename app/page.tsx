@@ -23,10 +23,17 @@ export default async function Home({
   const initialProgress = await loadD1LearnerProgress(learnerId);
 
   return (
-    <LearnerJourney
-      learnerId={learnerId}
-      initialProgress={initialProgress}
-    />
+    <>
+      {sessionLearnerId ? (
+        <form action="/api/learner-logout" method="post">
+          <button type="submit">Sair</button>
+        </form>
+      ) : null}
+      <LearnerJourney
+        learnerId={learnerId}
+        initialProgress={initialProgress}
+      />
+    </>
   );
 }
 

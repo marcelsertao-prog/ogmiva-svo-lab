@@ -492,6 +492,41 @@ test("restores learner progress from a valid Ogmiva session", async () => {
   assert.match(html, /progress-learner-2-ogmiva-session/);
 });
 
+test("presents Ogmiva logout only for a journey resolved from an Ogmiva session", async () => {
+  const sessionResponse = await fetchRenderedHome({
+    cookie: "ogmiva_session=valid-session-learner-2",
+  }, {
+    DB: {
+      prepare: (query) => ({
+        bind: () => ({
+          first: async () => /FROM learner_sessions/.test(query)
+            ? { learnerId: "learner-2" }
+            : null,
+        }),
+      }),
+    },
+  });
+
+  assert.equal(sessionResponse.status, 200);
+  const sessionHtml = await sessionResponse.text();
+  assert.match(
+    sessionHtml,
+    /<form[^>]*(?:action="\/api\/learner-logout"[^>]*method="post"|method="post"[^>]*action="\/api\/learner-logout")[^>]*>/,
+  );
+  assert.match(sessionHtml, />Sair<\/button>/);
+  assert.match(sessionHtml, /data-stage-id=/);
+
+  const chatGPTResponse = await fetchRenderedHome({
+    "oai-authenticated-user-id": "external-user-2",
+    "oai-authenticated-user-email": "returning@example.com",
+  });
+
+  assert.equal(chatGPTResponse.status, 200);
+  const chatGPTHtml = await chatGPTResponse.text();
+  assert.doesNotMatch(chatGPTHtml, /action="\/api\/learner-logout"/);
+  assert.match(chatGPTHtml, /data-stage-id=/);
+});
+
 test("issues a secure Ogmiva session for an authenticated associated learner", async () => {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
