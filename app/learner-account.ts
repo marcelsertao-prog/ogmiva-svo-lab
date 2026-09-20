@@ -45,6 +45,19 @@ export async function provisionLearnerAccount({
   `).bind(loginId, learnerId, credentialVerifier).run();
 }
 
+export async function deprovisionLearnerAccount({
+  database,
+  loginId,
+}: {
+  database: D1LearnerAccountDatabase;
+  loginId: string;
+}) {
+  await database.prepare(`
+    DELETE FROM learner_accounts
+    WHERE login_id = ?
+  `).bind(loginId).run();
+}
+
 export async function authenticateProvisionedLearner(
   loginId: string,
   credential: string,

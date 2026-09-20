@@ -1102,6 +1102,128 @@ test("rejects an invalid administrative provisioning secret without creating an 
   assert.equal(response.status, 401);
 });
 
+test("rejects an invalid administrative deprovisioning secret without deleting accounts", async (t) => {
+  const { database, miniflare } =
+    await createAdministrativeProvisioningHarness(t, "invalid-delete-secret");
+  const storedAccounts = [
+    {
+      loginId: "school-user-to-delete",
+      learnerId: "learner-2",
+      credentialHash: "preserved target credential verifier",
+    },
+    {
+      loginId: "school-user-to-preserve",
+      learnerId: "learner-3",
+      credentialHash: "preserved other credential verifier",
+    },
+  ];
+  for (const account of storedAccounts) {
+    await database.prepare(`
+      INSERT INTO learner_accounts (
+        login_id,
+        learner_id,
+        credential_hash
+      ) VALUES (?, ?, ?)
+    `).bind(
+      account.loginId,
+      account.learnerId,
+      account.credentialHash,
+    ).run();
+  }
+
+  const response = await miniflare.dispatchFetch(
+    "http://localhost/api/admin/learner-accounts",
+    {
+      method: "DELETE",
+      headers: {
+        authorization: "Bearer incorrect administrative secret",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ loginId: storedAccounts[0].loginId }),
+    },
+  );
+
+  const remainingAccounts = await database.prepare(`
+    SELECT
+      login_id AS loginId,
+      learner_id AS learnerId,
+      credential_hash AS credentialHash
+    FROM learner_accounts
+    ORDER BY login_id
+  `).all();
+  assert.deepEqual(
+    {
+      status: response.status,
+      remainingAccounts: remainingAccounts.results,
+    },
+    {
+      status: 401,
+      remainingAccounts: [...storedAccounts].sort(
+        (left, right) => left.loginId.localeCompare(right.loginId),
+      ),
+    },
+  );
+});
+
+test("deprovisions only the explicitly identified learner account", async (t) => {
+  const { database, miniflare, provisioningSecret } =
+    await createAdministrativeProvisioningHarness(t, "authorized-delete");
+  const accountToDelete = {
+    loginId: "school-user-to-delete",
+    learnerId: "learner-2",
+    credentialHash: "deleted credential verifier",
+  };
+  const accountToPreserve = {
+    loginId: "school-user-to-preserve",
+    learnerId: "learner-3",
+    credentialHash: "preserved credential verifier",
+  };
+  for (const account of [accountToDelete, accountToPreserve]) {
+    await database.prepare(`
+      INSERT INTO learner_accounts (
+        login_id,
+        learner_id,
+        credential_hash
+      ) VALUES (?, ?, ?)
+    `).bind(
+      account.loginId,
+      account.learnerId,
+      account.credentialHash,
+    ).run();
+  }
+
+  const response = await miniflare.dispatchFetch(
+    "http://localhost/api/admin/learner-accounts",
+    {
+      method: "DELETE",
+      headers: {
+        authorization: `Bearer ${provisioningSecret}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ loginId: accountToDelete.loginId }),
+    },
+  );
+
+  const remainingAccounts = await database.prepare(`
+    SELECT
+      login_id AS loginId,
+      learner_id AS learnerId,
+      credential_hash AS credentialHash
+    FROM learner_accounts
+    ORDER BY login_id
+  `).all();
+  assert.deepEqual(
+    {
+      status: response.status,
+      remainingAccounts: remainingAccounts.results,
+    },
+    {
+      status: 204,
+      remainingAccounts: [accountToPreserve],
+    },
+  );
+});
+
 test("provisions one learner account with the correct administrative secret", async (t) => {
   const { database, miniflare, provisioningSecret } =
     await createAdministrativeProvisioningHarness(t, "authorized");

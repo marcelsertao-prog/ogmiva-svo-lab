@@ -1,6 +1,7 @@
 import { getRequestExecutionContext } from "vinext/shims/request-context";
 
 import {
+  deprovisionLearnerAccount,
   provisionLearnerAccount,
   type D1LearnerAccountDatabase,
 } from "../../../learner-account";
@@ -16,7 +17,13 @@ type LearnerAccountProvisioningRequest = {
   credential?: unknown;
 };
 
-export async function POST(request: Request) {
+type LearnerAccountDeprovisioningRequest = {
+  loginId: string;
+};
+
+function getAuthorizedAdministrativeEnvironment(
+  request: Request,
+): LearnerAccountProvisioningEnvironment | null {
   const requestContext = getRequestExecutionContext() as
     | LearnerAccountProvisioningEnvironment
     | null;
@@ -27,6 +34,15 @@ export async function POST(request: Request) {
     !provisioningSecret
     || authorization !== `Bearer ${provisioningSecret}`
   ) {
+    return null;
+  }
+
+  return requestContext;
+}
+
+export async function POST(request: Request) {
+  const requestContext = getAuthorizedAdministrativeEnvironment(request);
+  if (!requestContext) {
     return new Response(null, { status: 401 });
   }
 
@@ -67,6 +83,21 @@ export async function POST(request: Request) {
 
     throw error;
   }
+
+  return new Response(null, { status: 204 });
+}
+
+export async function DELETE(request: Request) {
+  const requestContext = getAuthorizedAdministrativeEnvironment(request);
+  if (!requestContext) {
+    return new Response(null, { status: 401 });
+  }
+
+  const body = await request.json() as LearnerAccountDeprovisioningRequest;
+  await deprovisionLearnerAccount({
+    database: requestContext.DB,
+    loginId: body.loginId,
+  });
 
   return new Response(null, { status: 204 });
 }
