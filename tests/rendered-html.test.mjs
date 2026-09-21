@@ -17,6 +17,7 @@ import {
   checkListening01Answer,
   listening01Activity,
 } from "../app/listening-01.ts";
+import { submitSpeaking01Attempt } from "../app/speaking-01.ts";
 import {
   createConfiguredLearnerIdLookup,
   getActiveLearnerId,
@@ -1747,6 +1748,49 @@ test("submits a Listening 01 choice through the application pipeline", async () 
   assert.equal(incorrectResult.assessment?.correct, false);
   assert.equal(incorrectResult.progress?.score, 0);
   assert.equal(incorrectResult.progress?.attemptNumber, 1);
+});
+
+test("assesses a recognized Speaking 01 attempt for the learner in the session without persisting audio", async () => {
+  const activityEngine = new ActivityEngine();
+  const activity = {
+    id: "SPEAK-SVO-01",
+    title: "Say the sentence",
+    type: "speech-production",
+    level: "sentence",
+    pattern: "SVO",
+    availableUnits: ["Anna likes music."],
+    expectedUnits: ["Anna likes music."],
+    skillIds: ["basic-svo-speaking"],
+  };
+  activityEngine.register(activity);
+  const registeredActivity = activityEngine.get(activity.id);
+  assert.ok(registeredActivity);
+  const sessionEngine = new DefaultSessionEngine(new EventBus(), activityEngine);
+  const createdSession = await sessionEngine.createSession({
+    learnerId: "learner-2",
+    activityId: registeredActivity.id,
+  });
+  const session = await sessionEngine.startSession(createdSession.sessionId);
+
+  const result = await submitSpeaking01Attempt({
+    recognition: { recognizedText: "Anna likes music." },
+    activity: registeredActivity,
+    session,
+    evidenceEngine: new EvidenceEngine(),
+    assessmentEngine: new AssessmentEngine(),
+    progressEngine: new DefaultProgressEngine(),
+  });
+
+  assert.equal(result.feedback, "correct");
+  assert.equal(result.interaction?.learnerId, session.learnerId);
+  assert.equal(result.evidence?.learnerId, session.learnerId);
+  assert.equal(result.assessment?.learnerId, session.learnerId);
+  assert.equal(result.progress?.learnerId, session.learnerId);
+  assert.equal(result.progress?.activityId, "SPEAK-SVO-01");
+  assert.equal(result.progress?.skillId, "basic-svo-speaking");
+  assert.equal(result.progress?.completed, true);
+  assert.equal(result.progress?.score, 1);
+  assert.doesNotMatch(JSON.stringify(result), /audio/i);
 });
 
 test("keeps Listening 01 completion separate from attempt feedback", () => {
