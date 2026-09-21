@@ -12,8 +12,17 @@ export type Speaking01CardProps = {
   onStart?: () => void | Promise<void>;
 };
 
+const recognitionFailureMessages: Record<SpeakingRecognitionFailureCode, string> = {
+  "permission-denied": "Microphone access is required to use Speaking 01.",
+  "microphone-unavailable": "A microphone could not be detected. Check your device and try again.",
+  "recognition-unavailable": "Speech recognition is temporarily unavailable. Try again.",
+};
+
 export function Speaking01Card(props: Speaking01CardProps) {
   const isUnlocked = props.isUnlocked;
+  const recognitionFailureMessage = props.recognitionFailure
+    ? recognitionFailureMessages[props.recognitionFailure]
+    : null;
 
   return (
     <article
@@ -31,19 +40,11 @@ export function Speaking01Card(props: Speaking01CardProps) {
         </div>
         <h2>Say the sentence</h2>
         <p>Pratique oralmente a mesma estrutura reconhecida em Listening 01.</p>
-        {props.recognitionFailure === "permission-denied" && (
+        {recognitionFailureMessage && (
           <div className="feedback neutral" role="alert">
             <span className="feedback-icon">···</span>
             <div>
-              <strong>Microphone access is required to use Speaking 01.</strong>
-            </div>
-          </div>
-        )}
-        {props.recognitionFailure === "microphone-unavailable" && (
-          <div className="feedback neutral" role="alert">
-            <span className="feedback-icon">···</span>
-            <div>
-              <strong>A microphone could not be detected. Check your device and try again.</strong>
+              <strong>{recognitionFailureMessage}</strong>
             </div>
           </div>
         )}

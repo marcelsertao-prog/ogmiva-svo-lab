@@ -17,7 +17,8 @@ export type SpeakingRecognitionResult = {
 
 export type SpeakingRecognitionFailureCode =
   | "permission-denied"
-  | "microphone-unavailable";
+  | "microphone-unavailable"
+  | "recognition-unavailable";
 
 export class SpeakingRecognitionError extends Error {
   readonly code: SpeakingRecognitionFailureCode;

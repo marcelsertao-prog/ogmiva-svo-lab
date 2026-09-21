@@ -63,6 +63,11 @@ export function createBrowserSpeaking01Recognizer(
 
         if (event.error === "audio-capture") {
           reject(new SpeakingRecognitionError("microphone-unavailable"));
+          return;
+        }
+
+        if (event.error === "network") {
+          reject(new SpeakingRecognitionError("recognition-unavailable"));
         }
       };
       recognition.onend = () => {
