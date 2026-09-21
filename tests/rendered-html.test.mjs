@@ -186,6 +186,24 @@ async function fetchRenderedHome(headers = {}, bindings = {}) {
   );
 }
 
+async function renderSpeaking01Card(props) {
+  const vite = await createViteServer({
+    root: fileURLToPath(new URL("..", import.meta.url)),
+    configFile: false,
+    server: { middlewareMode: true },
+    appType: "custom",
+  });
+
+  try {
+    const { Speaking01Card } = await vite.ssrLoadModule(
+      "/app/speaking-01-card.tsx",
+    );
+    return renderToStaticMarkup(createElement(Speaking01Card, props));
+  } finally {
+    await vite.close();
+  }
+}
+
 async function applyD1Migrations(database) {
   const migrationFiles = (await readdir(
     new URL("../drizzle", import.meta.url),
@@ -544,30 +562,30 @@ test("presents Speaking 01 after completed Listening 01 without blocking SVO-02"
 });
 
 test("presents recognized Speaking 01 text and correct feedback to the learner", async () => {
-  const vite = await createViteServer({
-    root: fileURLToPath(new URL("..", import.meta.url)),
-    configFile: false,
-    server: { middlewareMode: true },
-    appType: "custom",
+  const html = await renderSpeaking01Card({
+    isUnlocked: true,
+    recognizedText: "Anna likes music.",
+    feedback: "correct",
   });
 
-  try {
-    const { Speaking01Card } = await vite.ssrLoadModule(
-      "/app/speaking-01-card.tsx",
-    );
-    const html = renderToStaticMarkup(createElement(Speaking01Card, {
-      isUnlocked: true,
-      recognizedText: "Anna likes music.",
-      feedback: "correct",
-    }));
+  assert.match(html, /I heard:/);
+  assert.match(html, /Anna likes music\./);
+  assert.match(html, /Great speaking!/);
+  assert.match(html, /You produced the expected sentence\./);
+});
 
-    assert.match(html, /I heard:/);
-    assert.match(html, /Anna likes music\./);
-    assert.match(html, /Great speaking!/);
-    assert.match(html, /You produced the expected sentence\./);
-  } finally {
-    await vite.close();
-  }
+test("presents recognized Speaking 01 text and incorrect feedback to the learner", async () => {
+  const html = await renderSpeaking01Card({
+    isUnlocked: true,
+    recognizedText: "Likes Anna music.",
+    feedback: "incorrect",
+  });
+
+  assert.match(html, /I heard:/);
+  assert.match(html, /Likes Anna music\./);
+  assert.match(html, /Not quite — try again\./);
+  assert.match(html, /Say the sentence in Subject \+ Verb \+ Object order\./);
+  assert.doesNotMatch(html, /Great speaking!/);
 });
 
 test("presents Ogmiva logout only for a journey resolved from an Ogmiva session", async () => {

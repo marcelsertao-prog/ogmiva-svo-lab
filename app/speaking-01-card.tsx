@@ -43,6 +43,15 @@ export function Speaking01Card(props: Speaking01CardProps) {
             </div>
           </div>
         )}
+        {props.feedback === "incorrect" && (
+          <div className="feedback incorrect" role="alert">
+            <span className="feedback-icon">↺</span>
+            <div>
+              <strong>Not quite — try again.</strong>
+              <p>Say the sentence in Subject + Verb + Object order.</p>
+            </div>
+          </div>
+        )}
         <div className="journey-card-footer">
           <span className="pattern-chip">S + V + O · Speaking</span>
           <span className="coming-soon">
