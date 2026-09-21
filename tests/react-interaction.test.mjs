@@ -181,6 +181,59 @@ test("submits a controlled Speaking 01 recognition for the active learner", asyn
   }
 });
 
+test("uses native browser recognition for an available Speaking 01 activity", async () => {
+  let startCount = 0;
+
+  class ControlledSpeechRecognition {
+    start() {
+      startCount += 1;
+      this.onresult?.({
+        results: [{
+          0: { transcript: "Anna likes music." },
+          isFinal: true,
+        }],
+      });
+    }
+  }
+
+  const mounted = await mountLearnerJourney({
+    learnerId: "learner-2",
+    initialProgress: {
+      learnerId: "learner-2",
+      completedActivityIds: ["SVO-01"],
+      completedListeningActivityIds: ["LISTEN-SVO-01"],
+    },
+  }, {
+    prepareWindow(browserWindow) {
+      browserWindow.SpeechRecognition = ControlledSpeechRecognition;
+    },
+  });
+
+  try {
+    const speakingCard = mounted.container.querySelector(
+      '[data-activity-id="SPEAK-SVO-01"]',
+    );
+    assert.ok(speakingCard);
+    const startButton = speakingCard.querySelector(
+      '[data-speaking-action="start"]',
+    );
+    assert.ok(startButton);
+    assert.match(startButton.textContent ?? "", /Start speaking/);
+
+    await act(async () => {
+      startButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    assert.equal(startCount, 1);
+    assert.match(speakingCard.textContent ?? "", /I heard:/);
+    assert.match(speakingCard.textContent ?? "", /Anna likes music\./);
+    assert.match(speakingCard.textContent ?? "", /Great speaking!/);
+  } finally {
+    await mounted.cleanup();
+  }
+});
+
 test("fails closed when Speaking 01 recognition is unavailable in the browser", async () => {
   const mounted = await mountLearnerJourney({
     learnerId: "learner-2",

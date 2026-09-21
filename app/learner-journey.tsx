@@ -8,6 +8,7 @@ import { createSubmitAnswerInteraction } from "@seal-sdk/interaction";
 import { DefaultProgressEngine } from "@seal-sdk/progress";
 import { DefaultSessionEngine, type SessionState } from "@seal-sdk/session";
 import { useEffect, useMemo, useState } from "react";
+import { createBrowserSpeaking01Recognizer } from "./browser-speaking-recognizer";
 import { persistLearnerJourneyProgress } from "./learner-progress-client";
 import { checkListening01Answer, listening01Activity } from "./listening-01";
 import {
@@ -265,6 +266,9 @@ export function LearnerJourney({
     Speaking01AttemptResult["feedback"] | "idle"
   >("idle");
   const [speaking01Session, setSpeaking01Session] = useState<SessionState | null>(null);
+  const [browserSpeaking01Recognizer, setBrowserSpeaking01Recognizer] = useState<
+    Speaking01Recognizer | undefined
+  >();
   const [hasPlayedListening02Prompt, setHasPlayedListening02Prompt] = useState(false);
   const [isListening02Playing, setIsListening02Playing] = useState(false);
   const [listening02AudioError, setListening02AudioError] = useState(false);
@@ -453,6 +457,36 @@ export function LearnerJourney({
     return () => window.clearTimeout(restoreProgress);
   }, [learnerId, restoredInitialProgress]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    queueMicrotask(() => {
+      if (cancelled) return;
+
+      if (recognizeSpeaking01) {
+        setBrowserSpeaking01Recognizer(undefined);
+        return;
+      }
+
+      const SpeechRecognition = (window as Window & {
+        SpeechRecognition?: Parameters<typeof createBrowserSpeaking01Recognizer>[0];
+      }).SpeechRecognition;
+
+      setBrowserSpeaking01Recognizer(
+        SpeechRecognition
+          ? () => createBrowserSpeaking01Recognizer(SpeechRecognition)
+          : undefined,
+      );
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [recognizeSpeaking01]);
+
+  const activeSpeaking01Recognizer =
+    recognizeSpeaking01 ?? browserSpeaking01Recognizer;
+
   async function persistCompletedActivities(completedActivityIds: ActivityId[]) {
     const progress: StoredLearnerProgress = {
       learnerId,
@@ -578,9 +612,9 @@ export function LearnerJourney({
   }
 
   async function handleSpeaking01Attempt() {
-    if (!isListening01Complete || !recognizeSpeaking01) return;
+    if (!isListening01Complete || !activeSpeaking01Recognizer) return;
 
-    const recognition = await recognizeSpeaking01({ learnerId });
+    const recognition = await activeSpeaking01Recognizer({ learnerId });
     const session = await ensureSpeaking01Session();
     const result = await submitSpeaking01Attempt({
       recognition,
@@ -1586,7 +1620,7 @@ export function LearnerJourney({
                 isUnlocked={isListening01Complete}
                 recognizedText={speaking01RecognizedText}
                 feedback={speaking01Feedback}
-                onStart={recognizeSpeaking01 ? handleSpeaking01Attempt : undefined}
+                onStart={activeSpeaking01Recognizer ? handleSpeaking01Attempt : undefined}
               />
             </section>
 
