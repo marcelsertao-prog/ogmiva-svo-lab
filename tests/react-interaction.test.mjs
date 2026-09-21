@@ -312,6 +312,73 @@ test("fails closed when Speaking 01 microphone permission is denied", async () =
   }
 });
 
+test("presents an incomplete Speaking 01 attempt when no speech is recognized", async () => {
+  let startCount = 0;
+  let progressRecordCount = 0;
+  const { DefaultProgressEngine } = await import("@seal-sdk/progress");
+  const originalRecordAssessment =
+    DefaultProgressEngine.prototype.recordAssessment;
+
+  DefaultProgressEngine.prototype.recordAssessment = async function (input) {
+    progressRecordCount += 1;
+    return originalRecordAssessment.call(this, input);
+  };
+
+  class NoSpeechRecognition {
+    start() {
+      startCount += 1;
+      this.onerror?.({ error: "no-speech" });
+    }
+  }
+
+  let mounted;
+
+  try {
+    mounted = await mountLearnerJourney({
+      learnerId: "learner-2",
+      initialProgress: {
+        learnerId: "learner-2",
+        completedActivityIds: ["SVO-01"],
+        completedListeningActivityIds: ["LISTEN-SVO-01"],
+      },
+    }, {
+      prepareWindow(browserWindow) {
+        delete browserWindow.webkitSpeechRecognition;
+        browserWindow.SpeechRecognition = NoSpeechRecognition;
+      },
+    });
+
+    const speakingCard = mounted.container.querySelector(
+      '[data-activity-id="SPEAK-SVO-01"]',
+    );
+    assert.ok(speakingCard);
+    const startButton = speakingCard.querySelector(
+      '[data-speaking-action="start"]',
+    );
+    assert.ok(startButton);
+
+    await act(async () => {
+      startButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    assert.equal(startCount, 1);
+    assert.equal(progressRecordCount, 0);
+    assert.match(
+      speakingCard.textContent ?? "",
+      /I couldn’t hear a complete sentence\./,
+    );
+    assert.match(speakingCard.textContent ?? "", /Try speaking again\./);
+    assert.doesNotMatch(speakingCard.textContent ?? "", /I heard:/);
+    assert.doesNotMatch(speakingCard.textContent ?? "", /Great speaking!/);
+    assert.doesNotMatch(speakingCard.textContent ?? "", /Not quite/);
+  } finally {
+    DefaultProgressEngine.prototype.recordAssessment =
+      originalRecordAssessment;
+    await mounted?.cleanup();
+  }
+});
+
 test("fails closed when Speaking 01 recognition is unavailable in the browser", async () => {
   const mounted = await mountLearnerJourney({
     learnerId: "learner-2",

@@ -50,6 +50,11 @@ export function createBrowserSpeaking01Recognizer(
         }
       };
       recognition.onerror = (event) => {
+        if (event.error === "no-speech") {
+          resolve({ recognizedText: null });
+          return;
+        }
+
         if (event.error === "not-allowed") {
           reject(new SpeakingRecognitionError("permission-denied"));
         }
