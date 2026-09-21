@@ -52,6 +52,15 @@ export function Speaking01Card(props: Speaking01CardProps) {
             </div>
           </div>
         )}
+        {props.feedback === "incomplete" && (
+          <div className="feedback neutral" role="status">
+            <span className="feedback-icon">···</span>
+            <div>
+              <strong>I couldn’t hear a complete sentence.</strong>
+              <p>Try speaking again.</p>
+            </div>
+          </div>
+        )}
         <div className="journey-card-footer">
           <span className="pattern-chip">S + V + O · Speaking</span>
           <span className="coming-soon">

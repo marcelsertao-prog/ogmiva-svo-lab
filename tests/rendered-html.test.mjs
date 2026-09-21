@@ -588,6 +588,20 @@ test("presents recognized Speaking 01 text and incorrect feedback to the learner
   assert.doesNotMatch(html, /Great speaking!/);
 });
 
+test("presents incomplete Speaking 01 feedback when no text was recognized", async () => {
+  const html = await renderSpeaking01Card({
+    isUnlocked: true,
+    recognizedText: null,
+    feedback: "incomplete",
+  });
+
+  assert.match(html, /I couldn’t hear a complete sentence\./);
+  assert.match(html, /Try speaking again\./);
+  assert.doesNotMatch(html, /I heard:/);
+  assert.doesNotMatch(html, /Great speaking!/);
+  assert.doesNotMatch(html, /Not quite — try again\./);
+});
+
 test("presents Ogmiva logout only for a journey resolved from an Ogmiva session", async () => {
   const sessionResponse = await fetchRenderedHome({
     cookie: "ogmiva_session=valid-session-learner-2",
