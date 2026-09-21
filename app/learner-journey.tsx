@@ -71,6 +71,7 @@ import {
   type Listening05Role,
   type Listening05Slots,
 } from "./listening-05";
+import { Speaking01Card } from "./speaking-01-card";
 
 type Tile = {
   id: string;
@@ -1534,31 +1535,11 @@ export function LearnerJourney({
                 )}
               </div>
 
-              <article
-                className={`journey-card paired-activity speaking-extension ${isListening01Complete ? "is-unlocked" : "is-locked"}`}
-                data-activity-id="SPEAK-SVO-01"
-                data-activity-state={isListening01Complete ? "available" : "locked"}
-              >
-                <div className="journey-step" aria-hidden="true">1C</div>
-                <div className="journey-card-copy">
-                  <div className="journey-card-meta">
-                    <span>1C · Speaking 01 · Experimental</span>
-                    <span className={`status-chip ${isListening01Complete ? "available" : "locked"}`}>
-                      {isListening01Complete ? "Disponível" : "Bloqueada"}
-                    </span>
-                  </div>
-                  <h2>Say the sentence</h2>
-                  <p>Pratique oralmente a mesma estrutura reconhecida em Listening 01.</p>
-                  <div className="journey-card-footer">
-                    <span className="pattern-chip">S + V + O · Speaking</span>
-                    <span className="coming-soon">
-                      {isListening01Complete
-                        ? "Experimento disponível"
-                        : "Complete Listening 01 to unlock Speaking 01."}
-                    </span>
-                  </div>
-                </div>
-              </article>
+              <Speaking01Card
+                isUnlocked={isListening01Complete}
+                recognizedText={null}
+                feedback="idle"
+              />
             </section>
 
             <div className={`path-connector ${isSvo02Unlocked ? "is-unlocked" : ""}`} aria-hidden="true"><span /></div>

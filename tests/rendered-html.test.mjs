@@ -6,6 +6,9 @@ import test from "node:test";
 import { runInNewContext } from "node:vm";
 
 import { Miniflare } from "miniflare";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { createServer as createViteServer } from "vite";
 
 import { ActivityEngine } from "@seal-sdk/activity";
 import { AssessmentEngine } from "@seal-sdk/assessment";
@@ -538,6 +541,33 @@ test("presents Speaking 01 after completed Listening 01 without blocking SVO-02"
   );
   assert.match(stage02Html, /data-stage-state="current"/);
   assert.match(stage02Html, /data-activity-state="current"/);
+});
+
+test("presents recognized Speaking 01 text and correct feedback to the learner", async () => {
+  const vite = await createViteServer({
+    root: fileURLToPath(new URL("..", import.meta.url)),
+    configFile: false,
+    server: { middlewareMode: true },
+    appType: "custom",
+  });
+
+  try {
+    const { Speaking01Card } = await vite.ssrLoadModule(
+      "/app/speaking-01-card.tsx",
+    );
+    const html = renderToStaticMarkup(createElement(Speaking01Card, {
+      isUnlocked: true,
+      recognizedText: "Anna likes music.",
+      feedback: "correct",
+    }));
+
+    assert.match(html, /I heard:/);
+    assert.match(html, /Anna likes music\./);
+    assert.match(html, /Great speaking!/);
+    assert.match(html, /You produced the expected sentence\./);
+  } finally {
+    await vite.close();
+  }
 });
 
 test("presents Ogmiva logout only for a journey resolved from an Ogmiva session", async () => {
