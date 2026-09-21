@@ -468,9 +468,12 @@ export function LearnerJourney({
         return;
       }
 
-      const SpeechRecognition = (window as Window & {
+      const speechRecognitionWindow = window as Window & {
         SpeechRecognition?: Parameters<typeof createBrowserSpeaking01Recognizer>[0];
-      }).SpeechRecognition;
+        webkitSpeechRecognition?: Parameters<typeof createBrowserSpeaking01Recognizer>[0];
+      };
+      const SpeechRecognition = speechRecognitionWindow.SpeechRecognition
+        ?? speechRecognitionWindow.webkitSpeechRecognition;
 
       setBrowserSpeaking01Recognizer(
         SpeechRecognition

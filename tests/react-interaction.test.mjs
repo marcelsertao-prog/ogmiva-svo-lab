@@ -181,10 +181,10 @@ test("submits a controlled Speaking 01 recognition for the active learner", asyn
   }
 });
 
-test("uses native browser recognition for an available Speaking 01 activity", async () => {
+async function assertBrowserRecognitionFlow(recognitionProperty) {
   let startCount = 0;
 
-  class ControlledSpeechRecognition {
+  class ControlledBrowserSpeechRecognition {
     start() {
       startCount += 1;
       this.onresult?.({
@@ -205,7 +205,9 @@ test("uses native browser recognition for an available Speaking 01 activity", as
     },
   }, {
     prepareWindow(browserWindow) {
-      browserWindow.SpeechRecognition = ControlledSpeechRecognition;
+      delete browserWindow.SpeechRecognition;
+      delete browserWindow.webkitSpeechRecognition;
+      browserWindow[recognitionProperty] = ControlledBrowserSpeechRecognition;
     },
   });
 
@@ -232,6 +234,14 @@ test("uses native browser recognition for an available Speaking 01 activity", as
   } finally {
     await mounted.cleanup();
   }
+}
+
+test("uses native browser recognition for an available Speaking 01 activity", async () => {
+  await assertBrowserRecognitionFlow("SpeechRecognition");
+});
+
+test("uses prefixed browser recognition for an available Speaking 01 activity", async () => {
+  await assertBrowserRecognitionFlow("webkitSpeechRecognition");
 });
 
 test("fails closed when Speaking 01 recognition is unavailable in the browser", async () => {
