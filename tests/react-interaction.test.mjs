@@ -68,6 +68,49 @@ function InteractionProbe() {
   );
 }
 
+async function mountLearnerJourney(props, { prepareWindow } = {}) {
+  const testDom = installTestDom();
+  let root;
+  let vite;
+
+  async function cleanup() {
+    if (root) {
+      await act(async () => {
+        root.unmount();
+      });
+    }
+    await vite?.close();
+    testDom.restore();
+  }
+
+  try {
+    prepareWindow?.(window);
+    vite = await createViteServer({
+      root: fileURLToPath(new URL("..", import.meta.url)),
+      configFile: false,
+      server: { middlewareMode: true },
+      appType: "custom",
+    });
+    const { LearnerJourney } = await vite.ssrLoadModule(
+      "/app/learner-journey.tsx",
+    );
+    const { createRoot } = await import("react-dom/client");
+    const container = document.querySelector("#root");
+    assert.ok(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root.render(createElement(LearnerJourney, props));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    return { container, cleanup };
+  } catch (error) {
+    await cleanup();
+    throw error;
+  }
+}
+
 test("mounts, interacts with, and unmounts a React component", async () => {
   const testDom = installTestDom();
 
@@ -99,43 +142,22 @@ test("mounts, interacts with, and unmounts a React component", async () => {
 });
 
 test("submits a controlled Speaking 01 recognition for the active learner", async () => {
-  const testDom = installTestDom();
-  let root;
-  let vite;
+  const recognizedLearnerIds = [];
+  const mounted = await mountLearnerJourney({
+    learnerId: "learner-2",
+    initialProgress: {
+      learnerId: "learner-2",
+      completedActivityIds: ["SVO-01"],
+      completedListeningActivityIds: ["LISTEN-SVO-01"],
+    },
+    recognizeSpeaking01: async ({ learnerId }) => {
+      recognizedLearnerIds.push(learnerId);
+      return { recognizedText: "Anna likes music." };
+    },
+  });
 
   try {
-    vite = await createViteServer({
-      root: fileURLToPath(new URL("..", import.meta.url)),
-      configFile: false,
-      server: { middlewareMode: true },
-      appType: "custom",
-    });
-    const { LearnerJourney } = await vite.ssrLoadModule(
-      "/app/learner-journey.tsx",
-    );
-    const { createRoot } = await import("react-dom/client");
-    const container = document.querySelector("#root");
-    assert.ok(container);
-    const recognizedLearnerIds = [];
-    root = createRoot(container);
-
-    await act(async () => {
-      root.render(createElement(LearnerJourney, {
-        learnerId: "learner-2",
-        initialProgress: {
-          learnerId: "learner-2",
-          completedActivityIds: ["SVO-01"],
-          completedListeningActivityIds: ["LISTEN-SVO-01"],
-        },
-        recognizeSpeaking01: async ({ learnerId }) => {
-          recognizedLearnerIds.push(learnerId);
-          return { recognizedText: "Anna likes music." };
-        },
-      }));
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-
-    const speakingCard = container.querySelector(
+    const speakingCard = mounted.container.querySelector(
       '[data-activity-id="SPEAK-SVO-01"]',
     );
     assert.ok(speakingCard);
@@ -155,12 +177,42 @@ test("submits a controlled Speaking 01 recognition for the active learner", asyn
     assert.match(speakingCard.textContent ?? "", /Anna likes music\./);
     assert.match(speakingCard.textContent ?? "", /Great speaking!/);
   } finally {
-    if (root) {
-      await act(async () => {
-        root.unmount();
-      });
-    }
-    await vite?.close();
-    testDom.restore();
+    await mounted.cleanup();
+  }
+});
+
+test("fails closed when Speaking 01 recognition is unavailable in the browser", async () => {
+  const mounted = await mountLearnerJourney({
+    learnerId: "learner-2",
+    initialProgress: {
+      learnerId: "learner-2",
+      completedActivityIds: ["SVO-01"],
+      completedListeningActivityIds: ["LISTEN-SVO-01"],
+    },
+  }, {
+    prepareWindow(browserWindow) {
+      delete browserWindow.SpeechRecognition;
+      delete browserWindow.webkitSpeechRecognition;
+    },
+  });
+
+  try {
+    const speakingCard = mounted.container.querySelector(
+      '[data-activity-id="SPEAK-SVO-01"]',
+    );
+    assert.ok(speakingCard);
+    assert.equal(speakingCard.getAttribute("data-activity-state"), "available");
+    assert.equal(
+      speakingCard.querySelector('[data-speaking-action="start"]'),
+      null,
+    );
+    assert.match(
+      speakingCard.textContent ?? "",
+      /Speech recognition is not available in this browser\./,
+    );
+    assert.doesNotMatch(speakingCard.textContent ?? "", /I heard:/);
+    assert.doesNotMatch(speakingCard.textContent ?? "", /Great speaking!/);
+  } finally {
+    await mounted.cleanup();
   }
 });

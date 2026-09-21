@@ -76,7 +76,7 @@ export function Speaking01Card(props: Speaking01CardProps) {
           ) : (
             <span className="coming-soon">
               {isUnlocked
-                ? "Experimento disponível"
+                ? "Speech recognition is not available in this browser."
                 : "Complete Listening 01 to unlock Speaking 01."}
             </span>
           )}
