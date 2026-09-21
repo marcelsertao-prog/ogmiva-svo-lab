@@ -79,6 +79,7 @@ import {
   submitSpeaking01Attempt,
   type Speaking01AttemptResult,
   type Speaking01Recognizer,
+  type SpeakingRecognitionFailureCode,
   type SpeakingRecognitionResult,
 } from "./speaking-01";
 
@@ -267,7 +268,7 @@ export function LearnerJourney({
     Speaking01AttemptResult["feedback"] | "idle"
   >("idle");
   const [speaking01RecognitionFailure, setSpeaking01RecognitionFailure] = useState<
-    "permission-denied" | null
+    SpeakingRecognitionFailureCode | null
   >(null);
   const [speaking01Session, setSpeaking01Session] = useState<SessionState | null>(null);
   const [browserSpeaking01Recognizer, setBrowserSpeaking01Recognizer] = useState<
@@ -627,11 +628,8 @@ export function LearnerJourney({
     try {
       recognition = await activeSpeaking01Recognizer({ learnerId });
     } catch (error) {
-      if (
-        error instanceof SpeakingRecognitionError
-        && error.code === "permission-denied"
-      ) {
-        setSpeaking01RecognitionFailure("permission-denied");
+      if (error instanceof SpeakingRecognitionError) {
+        setSpeaking01RecognitionFailure(error.code);
         return;
       }
       throw error;

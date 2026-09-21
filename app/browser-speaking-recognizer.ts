@@ -57,6 +57,11 @@ export function createBrowserSpeaking01Recognizer(
 
         if (event.error === "not-allowed") {
           reject(new SpeakingRecognitionError("permission-denied"));
+          return;
+        }
+
+        if (event.error === "audio-capture") {
+          reject(new SpeakingRecognitionError("microphone-unavailable"));
         }
       };
       recognition.start();

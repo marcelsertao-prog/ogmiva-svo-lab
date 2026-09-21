@@ -1,5 +1,6 @@
 import type {
   Speaking01AttemptResult,
+  SpeakingRecognitionFailureCode,
   SpeakingRecognitionResult,
 } from "./speaking-01";
 
@@ -7,7 +8,7 @@ export type Speaking01CardProps = {
   isUnlocked: boolean;
   recognizedText: SpeakingRecognitionResult["recognizedText"];
   feedback: Speaking01AttemptResult["feedback"] | "idle";
-  recognitionFailure?: "permission-denied" | null;
+  recognitionFailure?: SpeakingRecognitionFailureCode | null;
   onStart?: () => void | Promise<void>;
 };
 
@@ -35,6 +36,14 @@ export function Speaking01Card(props: Speaking01CardProps) {
             <span className="feedback-icon">···</span>
             <div>
               <strong>Microphone access is required to use Speaking 01.</strong>
+            </div>
+          </div>
+        )}
+        {props.recognitionFailure === "microphone-unavailable" && (
+          <div className="feedback neutral" role="alert">
+            <span className="feedback-icon">···</span>
+            <div>
+              <strong>A microphone could not be detected. Check your device and try again.</strong>
             </div>
           </div>
         )}

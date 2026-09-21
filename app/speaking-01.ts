@@ -15,10 +15,14 @@ export type SpeakingRecognitionResult = {
   recognizedText: string | null;
 };
 
-export class SpeakingRecognitionError extends Error {
-  readonly code: "permission-denied";
+export type SpeakingRecognitionFailureCode =
+  | "permission-denied"
+  | "microphone-unavailable";
 
-  constructor(code: "permission-denied") {
+export class SpeakingRecognitionError extends Error {
+  readonly code: SpeakingRecognitionFailureCode;
+
+  constructor(code: SpeakingRecognitionFailureCode) {
     super(code);
     this.name = "SpeakingRecognitionError";
     this.code = code;

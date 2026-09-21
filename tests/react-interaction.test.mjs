@@ -379,6 +379,85 @@ test("presents an incomplete Speaking 01 attempt when no speech is recognized", 
   }
 });
 
+test("fails closed when Speaking 01 cannot detect a microphone", async () => {
+  let startCount = 0;
+  let speakingSessionCount = 0;
+  let progressRecordCount = 0;
+  const { DefaultSessionEngine } = await import("@seal-sdk/session");
+  const { DefaultProgressEngine } = await import("@seal-sdk/progress");
+  const originalCreateSession = DefaultSessionEngine.prototype.createSession;
+  const originalRecordAssessment =
+    DefaultProgressEngine.prototype.recordAssessment;
+
+  DefaultSessionEngine.prototype.createSession = async function (input) {
+    if (input.activityId === "SPEAK-SVO-01") speakingSessionCount += 1;
+    return originalCreateSession.call(this, input);
+  };
+  DefaultProgressEngine.prototype.recordAssessment = async function (input) {
+    progressRecordCount += 1;
+    return originalRecordAssessment.call(this, input);
+  };
+
+  class MissingMicrophoneSpeechRecognition {
+    start() {
+      startCount += 1;
+      this.onerror?.({ error: "audio-capture" });
+    }
+  }
+
+  let mounted;
+
+  try {
+    mounted = await mountLearnerJourney({
+      learnerId: "learner-2",
+      initialProgress: {
+        learnerId: "learner-2",
+        completedActivityIds: ["SVO-01"],
+        completedListeningActivityIds: ["LISTEN-SVO-01"],
+      },
+    }, {
+      prepareWindow(browserWindow) {
+        delete browserWindow.webkitSpeechRecognition;
+        browserWindow.SpeechRecognition = MissingMicrophoneSpeechRecognition;
+      },
+    });
+
+    const speakingCard = mounted.container.querySelector(
+      '[data-activity-id="SPEAK-SVO-01"]',
+    );
+    assert.ok(speakingCard);
+    const startButton = speakingCard.querySelector(
+      '[data-speaking-action="start"]',
+    );
+    assert.ok(startButton);
+
+    await act(async () => {
+      startButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    assert.equal(startCount, 1);
+    assert.equal(speakingSessionCount, 0);
+    assert.equal(progressRecordCount, 0);
+    assert.match(
+      speakingCard.textContent ?? "",
+      /A microphone could not be detected\. Check your device and try again\./,
+    );
+    assert.doesNotMatch(speakingCard.textContent ?? "", /I heard:/);
+    assert.doesNotMatch(speakingCard.textContent ?? "", /Great speaking!/);
+    assert.doesNotMatch(speakingCard.textContent ?? "", /Not quite/);
+    assert.doesNotMatch(
+      speakingCard.textContent ?? "",
+      /I couldn’t hear a complete sentence\./,
+    );
+  } finally {
+    DefaultSessionEngine.prototype.createSession = originalCreateSession;
+    DefaultProgressEngine.prototype.recordAssessment =
+      originalRecordAssessment;
+    await mounted?.cleanup();
+  }
+});
+
 test("fails closed when Speaking 01 recognition is unavailable in the browser", async () => {
   const mounted = await mountLearnerJourney({
     learnerId: "learner-2",
