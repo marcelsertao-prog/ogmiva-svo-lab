@@ -26,6 +26,7 @@ type BrowserSpeechRecognition = {
   maxAlternatives: number;
   onresult: ((event: BrowserSpeechRecognitionEvent) => void) | null;
   onerror: ((event: BrowserSpeechRecognitionErrorEvent) => void) | null;
+  onend: (() => void) | null;
   start(): void;
 };
 
@@ -63,6 +64,9 @@ export function createBrowserSpeaking01Recognizer(
         if (event.error === "audio-capture") {
           reject(new SpeakingRecognitionError("microphone-unavailable"));
         }
+      };
+      recognition.onend = () => {
+        resolve({ recognizedText: null });
       };
       recognition.start();
     });

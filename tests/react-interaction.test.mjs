@@ -312,7 +312,7 @@ test("fails closed when Speaking 01 microphone permission is denied", async () =
   }
 });
 
-test("presents an incomplete Speaking 01 attempt when no speech is recognized", async () => {
+async function assertIncompleteBrowserRecognition(completeRecognition) {
   let startCount = 0;
   let progressRecordCount = 0;
   const { DefaultProgressEngine } = await import("@seal-sdk/progress");
@@ -324,10 +324,10 @@ test("presents an incomplete Speaking 01 attempt when no speech is recognized", 
     return originalRecordAssessment.call(this, input);
   };
 
-  class NoSpeechRecognition {
+  class IncompleteSpeechRecognition {
     start() {
       startCount += 1;
-      this.onerror?.({ error: "no-speech" });
+      completeRecognition(this);
     }
   }
 
@@ -344,7 +344,7 @@ test("presents an incomplete Speaking 01 attempt when no speech is recognized", 
     }, {
       prepareWindow(browserWindow) {
         delete browserWindow.webkitSpeechRecognition;
-        browserWindow.SpeechRecognition = NoSpeechRecognition;
+        browserWindow.SpeechRecognition = IncompleteSpeechRecognition;
       },
     });
 
@@ -377,6 +377,18 @@ test("presents an incomplete Speaking 01 attempt when no speech is recognized", 
       originalRecordAssessment;
     await mounted?.cleanup();
   }
+}
+
+test("presents an incomplete Speaking 01 attempt when no speech is recognized", async () => {
+  await assertIncompleteBrowserRecognition((recognition) => {
+    recognition.onerror?.({ error: "no-speech" });
+  });
+});
+
+test("presents an incomplete Speaking 01 attempt when recognition ends without a result", async () => {
+  await assertIncompleteBrowserRecognition((recognition) => {
+    recognition.onend?.();
+  });
 });
 
 test("fails closed when Speaking 01 cannot detect a microphone", async () => {
