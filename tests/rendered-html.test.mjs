@@ -493,6 +493,53 @@ test("restores learner progress from a valid Ogmiva session", async () => {
   assert.match(html, /progress-learner-2-ogmiva-session/);
 });
 
+test("presents Speaking 01 after completed Listening 01 without blocking SVO-02", async () => {
+  const snapshot = {
+    learnerId: "learner-2",
+    completedActivityIds: ["SVO-01"],
+    completedListeningActivityIds: ["LISTEN-SVO-01"],
+  };
+  const response = await fetchRenderedHome({
+    cookie: "ogmiva_session=valid-session-learner-2",
+  }, {
+    DB: {
+      prepare: (query) => ({
+        bind: (...values) => ({
+          first: async () => {
+            if (/FROM learner_sessions/.test(query)) {
+              return { learnerId: "learner-2" };
+            }
+
+            return values.includes("learner-2")
+              ? { snapshot: JSON.stringify(snapshot) }
+              : null;
+          },
+        }),
+      }),
+    },
+  });
+
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  const listening01Position = html.indexOf("1B · Listening 01");
+  const speaking01Position = html.indexOf("1C · Speaking 01");
+  const stage02Position = html.indexOf('data-stage-id="SVO-LISTENING-02"');
+
+  assert.ok(listening01Position >= 0);
+  assert.ok(speaking01Position > listening01Position);
+  assert.ok(stage02Position > speaking01Position);
+  assert.match(
+    html,
+    /data-activity-id="SPEAK-SVO-01"[^>]*data-activity-state="available"/,
+  );
+  const stage02Html = html.slice(
+    stage02Position,
+    html.indexOf("</section>", stage02Position),
+  );
+  assert.match(stage02Html, /data-stage-state="current"/);
+  assert.match(stage02Html, /data-activity-state="current"/);
+});
+
 test("presents Ogmiva logout only for a journey resolved from an Ogmiva session", async () => {
   const sessionResponse = await fetchRenderedHome({
     cookie: "ogmiva_session=valid-session-learner-2",

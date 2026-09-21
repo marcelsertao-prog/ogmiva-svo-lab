@@ -92,6 +92,7 @@ button { font: inherit; }
 .paired-stage-progress span { margin-top: 5px; color: #d6e3f2; font-size: .68rem; font-weight: 750; }
 .journey-stage--pilot .journey-card { grid-column: 1; border-width: 2px; }
 .journey-stage--pilot .stage-listening { grid-column: 3; border-width: 2px; }
+.journey-stage--pilot .journey-card.speaking-extension { grid-column: 1 / -1; min-height: 0; }
 .paired-stage-link { grid-column: 2; display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--brand-blue-dark); }
 .paired-stage-link span { width: 25px; height: 25px; display: grid; place-items: center; border: 1px solid rgba(7,82,184,.18); border-radius: 50%; background: white; font-size: .6rem; font-weight: 900; box-shadow: 0 5px 14px rgba(3,40,87,.1); }
 .paired-stage-link strong { color: var(--brand-blue); font-size: 1.35rem; }
