@@ -7,6 +7,7 @@ export type Speaking01CardProps = {
   isUnlocked: boolean;
   recognizedText: SpeakingRecognitionResult["recognizedText"];
   feedback: Speaking01AttemptResult["feedback"] | "idle";
+  recognitionFailure?: "permission-denied" | null;
   onStart?: () => void | Promise<void>;
 };
 
@@ -29,6 +30,14 @@ export function Speaking01Card(props: Speaking01CardProps) {
         </div>
         <h2>Say the sentence</h2>
         <p>Pratique oralmente a mesma estrutura reconhecida em Listening 01.</p>
+        {props.recognitionFailure === "permission-denied" && (
+          <div className="feedback neutral" role="alert">
+            <span className="feedback-icon">···</span>
+            <div>
+              <strong>Microphone access is required to use Speaking 01.</strong>
+            </div>
+          </div>
+        )}
         {props.recognizedText && (
           <div className="speaking-recognition" role="status">
             <strong>I heard:</strong>

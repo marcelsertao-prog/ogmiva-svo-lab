@@ -2,6 +2,7 @@ import type {
   Speaking01Recognizer,
   SpeakingRecognitionResult,
 } from "./speaking-01";
+import { SpeakingRecognitionError } from "./speaking-01.ts";
 
 type BrowserSpeechRecognitionResult = {
   readonly isFinal: boolean;
@@ -14,12 +15,17 @@ type BrowserSpeechRecognitionEvent = {
   readonly results: ArrayLike<BrowserSpeechRecognitionResult>;
 };
 
+type BrowserSpeechRecognitionErrorEvent = {
+  readonly error: string;
+};
+
 type BrowserSpeechRecognition = {
   lang: string;
   continuous: boolean;
   interimResults: boolean;
   maxAlternatives: number;
   onresult: ((event: BrowserSpeechRecognitionEvent) => void) | null;
+  onerror: ((event: BrowserSpeechRecognitionErrorEvent) => void) | null;
   start(): void;
 };
 
@@ -29,7 +35,7 @@ export function createBrowserSpeaking01Recognizer(
   SpeechRecognition: BrowserSpeechRecognitionConstructor,
 ): Speaking01Recognizer {
   return async (): Promise<SpeakingRecognitionResult> =>
-    new Promise((resolve) => {
+    new Promise((resolve, reject) => {
       const recognition = new SpeechRecognition();
       recognition.lang = "en-US";
       recognition.continuous = false;
@@ -41,6 +47,11 @@ export function createBrowserSpeaking01Recognizer(
 
           resolve({ recognizedText: result[0]?.transcript ?? null });
           return;
+        }
+      };
+      recognition.onerror = (event) => {
+        if (event.error === "not-allowed") {
+          reject(new SpeakingRecognitionError("permission-denied"));
         }
       };
       recognition.start();

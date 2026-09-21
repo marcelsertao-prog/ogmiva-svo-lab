@@ -75,6 +75,7 @@ import {
 import { Speaking01Card } from "./speaking-01-card";
 import {
   speaking01Activity,
+  SpeakingRecognitionError,
   submitSpeaking01Attempt,
   type Speaking01AttemptResult,
   type Speaking01Recognizer,
@@ -265,6 +266,9 @@ export function LearnerJourney({
   const [speaking01Feedback, setSpeaking01Feedback] = useState<
     Speaking01AttemptResult["feedback"] | "idle"
   >("idle");
+  const [speaking01RecognitionFailure, setSpeaking01RecognitionFailure] = useState<
+    "permission-denied" | null
+  >(null);
   const [speaking01Session, setSpeaking01Session] = useState<SessionState | null>(null);
   const [browserSpeaking01Recognizer, setBrowserSpeaking01Recognizer] = useState<
     Speaking01Recognizer | undefined
@@ -617,7 +621,22 @@ export function LearnerJourney({
   async function handleSpeaking01Attempt() {
     if (!isListening01Complete || !activeSpeaking01Recognizer) return;
 
-    const recognition = await activeSpeaking01Recognizer({ learnerId });
+    setSpeaking01RecognitionFailure(null);
+    let recognition: SpeakingRecognitionResult;
+
+    try {
+      recognition = await activeSpeaking01Recognizer({ learnerId });
+    } catch (error) {
+      if (
+        error instanceof SpeakingRecognitionError
+        && error.code === "permission-denied"
+      ) {
+        setSpeaking01RecognitionFailure("permission-denied");
+        return;
+      }
+      throw error;
+    }
+
     const session = await ensureSpeaking01Session();
     const result = await submitSpeaking01Attempt({
       recognition,
@@ -1623,6 +1642,7 @@ export function LearnerJourney({
                 isUnlocked={isListening01Complete}
                 recognizedText={speaking01RecognizedText}
                 feedback={speaking01Feedback}
+                recognitionFailure={speaking01RecognitionFailure}
                 onStart={activeSpeaking01Recognizer ? handleSpeaking01Attempt : undefined}
               />
             </section>

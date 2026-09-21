@@ -244,6 +244,74 @@ test("uses prefixed browser recognition for an available Speaking 01 activity", 
   await assertBrowserRecognitionFlow("webkitSpeechRecognition");
 });
 
+test("fails closed when Speaking 01 microphone permission is denied", async () => {
+  let startCount = 0;
+  let speakingSessionCount = 0;
+  const { DefaultSessionEngine } = await import("@seal-sdk/session");
+  const originalCreateSession = DefaultSessionEngine.prototype.createSession;
+
+  DefaultSessionEngine.prototype.createSession = async function (input) {
+    if (input.activityId === "SPEAK-SVO-01") speakingSessionCount += 1;
+    return originalCreateSession.call(this, input);
+  };
+
+  class PermissionDeniedSpeechRecognition {
+    start() {
+      startCount += 1;
+      this.onerror?.({ error: "not-allowed" });
+    }
+  }
+
+  let mounted;
+
+  try {
+    mounted = await mountLearnerJourney({
+      learnerId: "learner-2",
+      initialProgress: {
+        learnerId: "learner-2",
+        completedActivityIds: ["SVO-01"],
+        completedListeningActivityIds: ["LISTEN-SVO-01"],
+      },
+    }, {
+      prepareWindow(browserWindow) {
+        delete browserWindow.webkitSpeechRecognition;
+        browserWindow.SpeechRecognition = PermissionDeniedSpeechRecognition;
+      },
+    });
+
+    const speakingCard = mounted.container.querySelector(
+      '[data-activity-id="SPEAK-SVO-01"]',
+    );
+    assert.ok(speakingCard);
+    const startButton = speakingCard.querySelector(
+      '[data-speaking-action="start"]',
+    );
+    assert.ok(startButton);
+
+    await act(async () => {
+      startButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    assert.equal(startCount, 1);
+    assert.equal(speakingSessionCount, 0);
+    assert.match(
+      speakingCard.textContent ?? "",
+      /Microphone access is required to use Speaking 01\./,
+    );
+    assert.doesNotMatch(speakingCard.textContent ?? "", /I heard:/);
+    assert.doesNotMatch(speakingCard.textContent ?? "", /Great speaking!/);
+    assert.doesNotMatch(speakingCard.textContent ?? "", /Not quite/);
+    assert.doesNotMatch(
+      speakingCard.textContent ?? "",
+      /I couldn’t hear a complete sentence\./,
+    );
+  } finally {
+    DefaultSessionEngine.prototype.createSession = originalCreateSession;
+    await mounted?.cleanup();
+  }
+});
+
 test("fails closed when Speaking 01 recognition is unavailable in the browser", async () => {
   const mounted = await mountLearnerJourney({
     learnerId: "learner-2",

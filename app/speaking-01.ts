@@ -15,6 +15,16 @@ export type SpeakingRecognitionResult = {
   recognizedText: string | null;
 };
 
+export class SpeakingRecognitionError extends Error {
+  readonly code: "permission-denied";
+
+  constructor(code: "permission-denied") {
+    super(code);
+    this.name = "SpeakingRecognitionError";
+    this.code = code;
+  }
+}
+
 export type Speaking01Recognizer = (input: {
   learnerId: string;
 }) => Promise<SpeakingRecognitionResult>;
