@@ -15,6 +15,21 @@ export type SpeakingRecognitionResult = {
   recognizedText: string | null;
 };
 
+export type Speaking01Recognizer = (input: {
+  learnerId: string;
+}) => Promise<SpeakingRecognitionResult>;
+
+export const speaking01Activity: LearningActivity = {
+  id: "SPEAK-SVO-01",
+  title: "Say the sentence",
+  type: "speech-production",
+  level: "sentence",
+  pattern: "SVO",
+  availableUnits: ["Anna likes music."],
+  expectedUnits: ["Anna likes music."],
+  skillIds: ["basic-svo-speaking"],
+};
+
 export type Speaking01AttemptInput = {
   recognition: SpeakingRecognitionResult;
   activity: LearningActivity;

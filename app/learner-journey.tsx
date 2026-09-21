@@ -72,6 +72,13 @@ import {
   type Listening05Slots,
 } from "./listening-05";
 import { Speaking01Card } from "./speaking-01-card";
+import {
+  speaking01Activity,
+  submitSpeaking01Attempt,
+  type Speaking01AttemptResult,
+  type Speaking01Recognizer,
+  type SpeakingRecognitionResult,
+} from "./speaking-01";
 
 type Tile = {
   id: string;
@@ -169,6 +176,7 @@ const assessmentEngine = new AssessmentEngine();
 const progressEngine = new DefaultProgressEngine();
 const activityEngine = new ActivityEngine();
 activityEngine.register(listening01Activity);
+activityEngine.register(speaking01Activity);
 const sessionEngine = new DefaultSessionEngine(new EventBus(), activityEngine);
 
 function getSequentialSvoCompletion(completedActivityIds: ActivityId[]) {
@@ -194,9 +202,11 @@ function getSequentialSvoCompletion(completedActivityIds: ActivityId[]) {
 export function LearnerJourney({
   learnerId,
   initialProgress = null,
+  recognizeSpeaking01,
 }: {
   learnerId: string;
   initialProgress?: Partial<StoredLearnerProgress> | null;
+  recognizeSpeaking01?: Speaking01Recognizer;
 }) {
   const restoredInitialProgress = useMemo(
     () => initialProgress
@@ -248,6 +258,13 @@ export function LearnerJourney({
     restoredInitialProgress?.isListening01Complete ?? false,
   );
   const [listening01Session, setListening01Session] = useState<SessionState | null>(null);
+  const [speaking01RecognizedText, setSpeaking01RecognizedText] = useState<
+    SpeakingRecognitionResult["recognizedText"]
+  >(null);
+  const [speaking01Feedback, setSpeaking01Feedback] = useState<
+    Speaking01AttemptResult["feedback"] | "idle"
+  >("idle");
+  const [speaking01Session, setSpeaking01Session] = useState<SessionState | null>(null);
   const [hasPlayedListening02Prompt, setHasPlayedListening02Prompt] = useState(false);
   const [isListening02Playing, setIsListening02Playing] = useState(false);
   const [listening02AudioError, setListening02AudioError] = useState(false);
@@ -546,6 +563,36 @@ export function LearnerJourney({
     const session = await sessionEngine.startSession(createdSession.sessionId);
     setListening01Session(session);
     return session;
+  }
+
+  async function ensureSpeaking01Session() {
+    if (speaking01Session?.status === "active") return speaking01Session;
+
+    const createdSession = await sessionEngine.createSession({
+      learnerId,
+      activityId: speaking01Activity.id,
+    });
+    const session = await sessionEngine.startSession(createdSession.sessionId);
+    setSpeaking01Session(session);
+    return session;
+  }
+
+  async function handleSpeaking01Attempt() {
+    if (!isListening01Complete || !recognizeSpeaking01) return;
+
+    const recognition = await recognizeSpeaking01({ learnerId });
+    const session = await ensureSpeaking01Session();
+    const result = await submitSpeaking01Attempt({
+      recognition,
+      activity: speaking01Activity,
+      session,
+      evidenceEngine,
+      assessmentEngine,
+      progressEngine,
+    });
+
+    setSpeaking01RecognizedText(recognition.recognizedText);
+    setSpeaking01Feedback(result.feedback);
   }
 
   async function playListeningPrompt() {
@@ -1537,8 +1584,9 @@ export function LearnerJourney({
 
               <Speaking01Card
                 isUnlocked={isListening01Complete}
-                recognizedText={null}
-                feedback="idle"
+                recognizedText={speaking01RecognizedText}
+                feedback={speaking01Feedback}
+                onStart={recognizeSpeaking01 ? handleSpeaking01Attempt : undefined}
               />
             </section>
 

@@ -7,6 +7,7 @@ export type Speaking01CardProps = {
   isUnlocked: boolean;
   recognizedText: SpeakingRecognitionResult["recognizedText"];
   feedback: Speaking01AttemptResult["feedback"] | "idle";
+  onStart?: () => void | Promise<void>;
 };
 
 export function Speaking01Card(props: Speaking01CardProps) {
@@ -63,11 +64,22 @@ export function Speaking01Card(props: Speaking01CardProps) {
         )}
         <div className="journey-card-footer">
           <span className="pattern-chip">S + V + O · Speaking</span>
-          <span className="coming-soon">
-            {isUnlocked
-              ? "Experimento disponível"
-              : "Complete Listening 01 to unlock Speaking 01."}
-          </span>
+          {isUnlocked && props.onStart ? (
+            <button
+              className="primary-button"
+              type="button"
+              data-speaking-action="start"
+              onClick={props.onStart}
+            >
+              Start speaking <span>→</span>
+            </button>
+          ) : (
+            <span className="coming-soon">
+              {isUnlocked
+                ? "Experimento disponível"
+                : "Complete Listening 01 to unlock Speaking 01."}
+            </span>
+          )}
         </div>
       </div>
     </article>
