@@ -645,6 +645,31 @@ export function LearnerJourney({
 
       setSpeaking01RecognizedText(recognition.recognizedText);
       setSpeaking01Feedback(result.feedback);
+
+      if (result.progress) {
+        const completedActivityIds: ActivityId[] = [];
+        if (isSvo01Complete) completedActivityIds.push("SVO-01");
+        if (isSvo02Complete) completedActivityIds.push("SVO-02");
+        if (isSvo03Complete) completedActivityIds.push("SVO-03");
+        if (isSvo04Complete) completedActivityIds.push("SVO-04");
+        if (isSvo05Complete) completedActivityIds.push("SVO-05");
+
+        await persistProgress({
+          learnerId,
+          completedActivityIds,
+          completedListeningActivityIds: [
+            ...(isListening01Complete ? ["LISTEN-SVO-01" as const] : []),
+            ...(isListening02Complete ? ["LISTEN-SVO-02" as const] : []),
+            ...(isListening03Complete ? ["LISTEN-SVO-03" as const] : []),
+            ...(isListening04Complete ? ["LISTEN-SVO-04" as const] : []),
+            ...(isListening05Complete ? ["LISTEN-SVO-05" as const] : []),
+          ],
+          progressRecords: [{
+            ...result.progress,
+            recordedAt: result.progress.recordedAt.toISOString(),
+          }],
+        });
+      }
     } catch (error) {
       if (error instanceof SpeakingRecognitionError) {
         setSpeaking01RecognitionFailure(error.code);

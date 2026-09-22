@@ -181,6 +181,73 @@ test("submits a controlled Speaking 01 recognition for the active learner", asyn
   }
 });
 
+test("persists the correct Speaking 01 ProgressRecord for the active learner", async (t) => {
+  const requests = [];
+  t.mock.method(globalThis, "fetch", async (input, init) => {
+    const request = input instanceof Request
+      ? input
+      : new Request(new URL(String(input), "http://localhost"), init);
+    requests.push(request);
+    return new Response(null, { status: 204 });
+  });
+
+  const mounted = await mountLearnerJourney({
+    learnerId: "learner-2",
+    initialProgress: {
+      learnerId: "learner-2",
+      completedActivityIds: ["SVO-01"],
+      completedListeningActivityIds: ["LISTEN-SVO-01"],
+    },
+    recognizeSpeaking01: async () => ({
+      recognizedText: "Anna likes music.",
+    }),
+  });
+
+  try {
+    const speakingCard = mounted.container.querySelector(
+      '[data-activity-id="SPEAK-SVO-01"]',
+    );
+    assert.ok(speakingCard);
+    const startButton = speakingCard.querySelector(
+      '[data-speaking-action="start"]',
+    );
+    assert.ok(startButton);
+
+    await act(async () => {
+      startButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    assert.equal(requests.length, 1);
+    const [request] = requests;
+    assert.equal(request.url, "http://localhost/api/learner-progress");
+    assert.equal(request.method, "POST");
+
+    const snapshot = await request.json();
+    assert.equal(snapshot.learnerId, "learner-2");
+    assert.deepEqual(snapshot.completedActivityIds, ["SVO-01"]);
+    assert.deepEqual(
+      snapshot.completedListeningActivityIds,
+      ["LISTEN-SVO-01"],
+    );
+    assert.equal(snapshot.progressRecords.length, 1);
+
+    const [progressRecord] = snapshot.progressRecords;
+    assert.equal(progressRecord.learnerId, "learner-2");
+    assert.equal(progressRecord.activityId, "SPEAK-SVO-01");
+    assert.equal(progressRecord.skillId, "basic-svo-speaking");
+    assert.equal(progressRecord.completed, true);
+    assert.equal(progressRecord.score, 1);
+    assert.equal(typeof progressRecord.recordedAt, "string");
+    assert.equal(Object.hasOwn(snapshot, "audio"), false);
+    assert.equal(Object.hasOwn(snapshot, "recognizedText"), false);
+    assert.equal(Object.hasOwn(progressRecord, "audio"), false);
+    assert.equal(Object.hasOwn(progressRecord, "recognizedText"), false);
+  } finally {
+    await mounted.cleanup();
+  }
+});
+
 test("prevents duplicate Speaking 01 attempts while recognition is pending", async () => {
   let recognitionCount = 0;
   let resolveRecognition;
