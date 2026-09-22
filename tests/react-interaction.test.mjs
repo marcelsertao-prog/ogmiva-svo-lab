@@ -181,6 +181,59 @@ test("submits a controlled Speaking 01 recognition for the active learner", asyn
   }
 });
 
+test("prevents duplicate Speaking 01 attempts while recognition is pending", async () => {
+  let recognitionCount = 0;
+  let resolveRecognition;
+  const pendingRecognition = new Promise((resolve) => {
+    resolveRecognition = resolve;
+  });
+  const mounted = await mountLearnerJourney({
+    learnerId: "learner-2",
+    initialProgress: {
+      learnerId: "learner-2",
+      completedActivityIds: ["SVO-01"],
+      completedListeningActivityIds: ["LISTEN-SVO-01"],
+    },
+    recognizeSpeaking01: async () => {
+      recognitionCount += 1;
+      return pendingRecognition;
+    },
+  });
+
+  try {
+    const speakingCard = mounted.container.querySelector(
+      '[data-activity-id="SPEAK-SVO-01"]',
+    );
+    assert.ok(speakingCard);
+    const startButton = speakingCard.querySelector(
+      '[data-speaking-action="start"]',
+    );
+    assert.ok(startButton);
+
+    await act(async () => {
+      startButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    assert.equal(recognitionCount, 1);
+    assert.equal(startButton.disabled, true);
+    assert.match(startButton.textContent ?? "", /Listening…/);
+
+    await act(async () => {
+      startButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    assert.equal(recognitionCount, 1);
+  } finally {
+    await act(async () => {
+      resolveRecognition?.({ recognizedText: "Anna likes music." });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await mounted.cleanup();
+  }
+});
+
 async function assertBrowserRecognitionFlow(recognitionProperty) {
   let startCount = 0;
 

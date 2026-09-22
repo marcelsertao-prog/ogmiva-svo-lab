@@ -270,6 +270,7 @@ export function LearnerJourney({
   const [speaking01RecognitionFailure, setSpeaking01RecognitionFailure] = useState<
     SpeakingRecognitionFailureCode | null
   >(null);
+  const [isSpeaking01Recognizing, setIsSpeaking01Recognizing] = useState(false);
   const [speaking01Session, setSpeaking01Session] = useState<SessionState | null>(null);
   const [browserSpeaking01Recognizer, setBrowserSpeaking01Recognizer] = useState<
     Speaking01Recognizer | undefined
@@ -620,33 +621,39 @@ export function LearnerJourney({
   }
 
   async function handleSpeaking01Attempt() {
-    if (!isListening01Complete || !activeSpeaking01Recognizer) return;
+    if (
+      !isListening01Complete
+      || !activeSpeaking01Recognizer
+      || isSpeaking01Recognizing
+    ) return;
 
+    setIsSpeaking01Recognizing(true);
     setSpeaking01RecognitionFailure(null);
-    let recognition: SpeakingRecognitionResult;
 
     try {
-      recognition = await activeSpeaking01Recognizer({ learnerId });
+      const recognition: SpeakingRecognitionResult =
+        await activeSpeaking01Recognizer({ learnerId });
+      const session = await ensureSpeaking01Session();
+      const result = await submitSpeaking01Attempt({
+        recognition,
+        activity: speaking01Activity,
+        session,
+        evidenceEngine,
+        assessmentEngine,
+        progressEngine,
+      });
+
+      setSpeaking01RecognizedText(recognition.recognizedText);
+      setSpeaking01Feedback(result.feedback);
     } catch (error) {
       if (error instanceof SpeakingRecognitionError) {
         setSpeaking01RecognitionFailure(error.code);
         return;
       }
       throw error;
+    } finally {
+      setIsSpeaking01Recognizing(false);
     }
-
-    const session = await ensureSpeaking01Session();
-    const result = await submitSpeaking01Attempt({
-      recognition,
-      activity: speaking01Activity,
-      session,
-      evidenceEngine,
-      assessmentEngine,
-      progressEngine,
-    });
-
-    setSpeaking01RecognizedText(recognition.recognizedText);
-    setSpeaking01Feedback(result.feedback);
   }
 
   async function playListeningPrompt() {
@@ -1641,6 +1648,7 @@ export function LearnerJourney({
                 recognizedText={speaking01RecognizedText}
                 feedback={speaking01Feedback}
                 recognitionFailure={speaking01RecognitionFailure}
+                isRecognizing={isSpeaking01Recognizing}
                 onStart={activeSpeaking01Recognizer ? handleSpeaking01Attempt : undefined}
               />
             </section>

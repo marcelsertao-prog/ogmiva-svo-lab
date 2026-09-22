@@ -9,6 +9,7 @@ export type Speaking01CardProps = {
   recognizedText: SpeakingRecognitionResult["recognizedText"];
   feedback: Speaking01AttemptResult["feedback"] | "idle";
   recognitionFailure?: SpeakingRecognitionFailureCode | null;
+  isRecognizing?: boolean;
   onStart?: () => void | Promise<void>;
 };
 
@@ -89,8 +90,9 @@ export function Speaking01Card(props: Speaking01CardProps) {
               type="button"
               data-speaking-action="start"
               onClick={props.onStart}
+              disabled={props.isRecognizing}
             >
-              Start speaking <span>→</span>
+              {props.isRecognizing ? "Listening…" : "Start speaking"} <span>→</span>
             </button>
           ) : (
             <span className="coming-soon">
