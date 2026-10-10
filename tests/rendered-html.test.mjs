@@ -2252,6 +2252,60 @@ test("adds assessed SEAL progress to the learner snapshot", async () => {
   }]);
 });
 
+test("preserves an incorrect Listening 01 assessment without completing the activity", async () => {
+  const activityEngine = new ActivityEngine();
+  activityEngine.register(listening01Activity);
+  const sessionEngine = new DefaultSessionEngine(new EventBus(), activityEngine);
+  const createdSession = await sessionEngine.createSession({
+    learnerId: "learner-1",
+    activityId: listening01Activity.id,
+  });
+  const session = await sessionEngine.startSession(createdSession.sessionId);
+  const result = await checkListening01Answer({
+    selectedAnswer: "Likes Anna music.",
+    activity: listening01Activity,
+    session,
+    evidenceEngine: new EvidenceEngine(),
+    assessmentEngine: new AssessmentEngine(),
+    progressEngine: new DefaultProgressEngine(),
+    sessionEngine,
+  });
+
+  assert.equal(result.feedback, "incorrect");
+  assert.ok(result.progress);
+  assert.equal(result.progress.completed, false);
+
+  const previousRecord = {
+    recordId: "progress-listening-previous",
+    learnerId: session.learnerId,
+    activityId: "LISTEN-SVO-02",
+    skillId: "basic-svo-listening",
+    completed: true,
+    score: 1,
+    attemptNumber: 1,
+    timeSpentSeconds: 12,
+    recordedAt: "2026-09-08T10:00:00.000Z",
+  };
+  const completedProgress = completeListening01Progress({
+    learnerId: session.learnerId,
+    completedActivityIds: ["SVO-01"],
+    completedListeningActivityIds: [],
+    progressRecords: [previousRecord],
+  }, result.progress);
+
+  assert.deepEqual(completedProgress.progressRecords, [
+    previousRecord,
+    {
+      ...result.progress,
+      recordedAt: result.progress.recordedAt.toISOString(),
+    },
+  ]);
+  assert.equal(
+    completedProgress.completedListeningActivityIds?.includes("LISTEN-SVO-01"),
+    false,
+  );
+});
+
 test("adds assessed Listening 02 progress to the learner snapshot", () => {
   const progressRecord = {
     recordId: "progress-listening-02",

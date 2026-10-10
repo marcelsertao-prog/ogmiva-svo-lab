@@ -146,12 +146,14 @@ export function completeListening01Progress(
         },
       ],
     } : {}),
-    completedListeningActivityIds: [
-      ...new Set([
-        ...(progress.completedListeningActivityIds ?? []),
-        "LISTEN-SVO-01" as const,
-      ]),
-    ],
+    ...(progressRecord?.completed === false ? {} : {
+      completedListeningActivityIds: [
+        ...new Set([
+          ...(progress.completedListeningActivityIds ?? []),
+          "LISTEN-SVO-01" as const,
+        ]),
+      ],
+    }),
   };
 }
 

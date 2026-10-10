@@ -791,7 +791,10 @@ export function LearnerJourney({
     setListening01Session(result.session);
     setListeningFeedback(result.feedback);
 
-    if (result.feedback === "correct") {
+    if (
+      result.feedback === "correct"
+      || (result.feedback === "incorrect" && result.progress)
+    ) {
       const completedActivityIds: ActivityId[] = [];
       if (isSvo01Complete) completedActivityIds.push("SVO-01");
       if (isSvo02Complete) completedActivityIds.push("SVO-02");
@@ -810,7 +813,9 @@ export function LearnerJourney({
           ...(isListening05Complete ? ["LISTEN-SVO-05" as const] : []),
         ],
       }, result.progress));
-      setIsListening01Complete(true);
+      if (result.feedback === "correct") {
+        setIsListening01Complete(true);
+      }
     }
   }
 
