@@ -2363,6 +2363,48 @@ test("adds assessed Listening 04 progress to the learner snapshot", () => {
   ]);
 });
 
+test("adds assessed Listening 05 progress to the learner snapshot", () => {
+  const previousRecord = {
+    recordId: "progress-listening-04",
+    learnerId: "learner-1",
+    activityId: "LISTEN-SVO-04",
+    skillId: "basic-svo-listening-role-identification",
+    completed: true,
+    score: 1,
+    attemptNumber: 1,
+    timeSpentSeconds: 20,
+    recordedAt: "2026-09-09T10:00:00.000Z",
+  };
+  const progressRecord = {
+    recordId: "progress-listening-05",
+    learnerId: "learner-1",
+    activityId: listening05Activity.id,
+    skillId: listening05Activity.skillIds[0],
+    completed: true,
+    score: 1,
+    attemptNumber: 1,
+    timeSpentSeconds: 22,
+    recordedAt: new Date("2026-09-10T10:00:00.000Z"),
+  };
+  const completedProgress = completeListening05Progress({
+    learnerId: "learner-1",
+    completedActivityIds: ["SVO-01", "SVO-02", "SVO-03", "SVO-04", "SVO-05"],
+    completedListeningActivityIds: ["LISTEN-SVO-04"],
+    progressRecords: [previousRecord],
+  }, progressRecord);
+
+  assert.ok(completedProgress.completedListeningActivityIds?.includes(
+    "LISTEN-SVO-05",
+  ));
+  assert.deepEqual(completedProgress.progressRecords, [
+    previousRecord,
+    {
+      ...progressRecord,
+      recordedAt: progressRecord.recordedAt.toISOString(),
+    },
+  ]);
+});
+
 test("does not add assessed progress belonging to another learner", () => {
   const completedProgress = completeListening01Progress({
     learnerId: "learner-a",
