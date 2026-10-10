@@ -2252,6 +2252,33 @@ test("adds assessed SEAL progress to the learner snapshot", async () => {
   }]);
 });
 
+test("adds assessed Listening 02 progress to the learner snapshot", () => {
+  const progressRecord = {
+    recordId: "progress-listening-02",
+    learnerId: "learner-1",
+    activityId: "LISTEN-SVO-02",
+    skillId: "basic-svo-listening",
+    completed: true,
+    score: 1,
+    attemptNumber: 1,
+    timeSpentSeconds: 12,
+    recordedAt: new Date("2026-09-08T10:00:00.000Z"),
+  };
+  const completedProgress = completeListening02Progress({
+    learnerId: "learner-1",
+    completedActivityIds: ["SVO-01", "SVO-02"],
+    progressRecords: [],
+  }, progressRecord);
+
+  assert.deepEqual(completedProgress.completedListeningActivityIds, [
+    "LISTEN-SVO-02",
+  ]);
+  assert.deepEqual(completedProgress.progressRecords, [{
+    ...progressRecord,
+    recordedAt: progressRecord.recordedAt.toISOString(),
+  }]);
+});
+
 test("does not add assessed progress belonging to another learner", () => {
   const completedProgress = completeListening01Progress({
     learnerId: "learner-a",
@@ -2283,6 +2310,30 @@ test("passes assessed Listening 01 progress to the persisted learner snapshot", 
   assert.match(
     handlerSource,
     /completeListening01Progress\(\{[\s\S]*?\}\s*,\s*result\.progress\s*\)\)/,
+  );
+});
+
+test("passes assessed Listening 02 progress to the persisted learner snapshot", async () => {
+  const pageSource = await readFile(
+    new URL("../app/learner-journey.tsx", import.meta.url),
+    "utf8",
+  );
+
+  const handlerStart = pageSource.indexOf(
+    "async function handleListening02Answer()",
+  );
+  const handlerEnd = pageSource.indexOf(
+    "function addToListening03Answer(", handlerStart,
+  );
+
+  assert.ok(handlerStart >= 0);
+  assert.ok(handlerEnd > handlerStart);
+
+  const handlerSource = pageSource.slice(handlerStart, handlerEnd);
+
+  assert.match(
+    handlerSource,
+    /completeListening02Progress\(\{[\s\S]*?\}\s*,\s*result\.progress\s*\)\)/,
   );
 });
 

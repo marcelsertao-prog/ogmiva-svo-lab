@@ -164,9 +164,19 @@ export function resetListening01Attempt(isListening01Complete: boolean): {
 
 export function completeListening02Progress(
   progress: StoredLearnerProgress,
+  progressRecord?: ProgressRecord,
 ): StoredLearnerProgress {
   return {
     ...progress,
+    ...(progressRecord?.learnerId === progress.learnerId ? {
+      progressRecords: [
+        ...(progress.progressRecords ?? []),
+        {
+          ...progressRecord,
+          recordedAt: progressRecord.recordedAt.toISOString(),
+        },
+      ],
+    } : {}),
     completedListeningActivityIds: [
       ...new Set([
         ...(progress.completedListeningActivityIds ?? []),
