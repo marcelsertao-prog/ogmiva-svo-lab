@@ -962,7 +962,7 @@ export function LearnerJourney({
           ...(isListening04Complete ? ["LISTEN-SVO-04" as const] : []),
           ...(isListening05Complete ? ["LISTEN-SVO-05" as const] : []),
         ],
-      }));
+      }, result.progress));
       setIsListening03Complete(true);
     }
   }
