@@ -216,12 +216,16 @@ export function completeListening03Progress(
         },
       ],
     } : {}),
-    completedListeningActivityIds: [
-      ...new Set([
-        ...(progress.completedListeningActivityIds ?? []),
-        "LISTEN-SVO-03" as const,
-      ]),
-    ],
+    ...(progressRecord
+      && (progressRecord.completed === false
+        || progressRecord.learnerId !== progress.learnerId) ? {} : {
+      completedListeningActivityIds: [
+        ...new Set([
+          ...(progress.completedListeningActivityIds ?? []),
+          "LISTEN-SVO-03" as const,
+        ]),
+      ],
+    }),
   };
 }
 
