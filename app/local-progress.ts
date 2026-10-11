@@ -146,7 +146,9 @@ export function completeListening01Progress(
         },
       ],
     } : {}),
-    ...(progressRecord?.completed === false ? {} : {
+    ...(progressRecord
+      && (progressRecord.completed === false
+        || progressRecord.learnerId !== progress.learnerId) ? {} : {
       completedListeningActivityIds: [
         ...new Set([
           ...(progress.completedListeningActivityIds ?? []),

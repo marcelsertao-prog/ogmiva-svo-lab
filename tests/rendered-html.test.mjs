@@ -2477,6 +2477,7 @@ test("does not add assessed progress belonging to another learner", () => {
   });
 
   assert.deepEqual(completedProgress.progressRecords, []);
+  assert.equal(completedProgress.completedListeningActivityIds?.includes('LISTEN-SVO-01') ?? false, false);
 });
 
 test("passes assessed Listening 01 progress to the persisted learner snapshot", async () => {
