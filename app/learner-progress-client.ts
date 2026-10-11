@@ -1,5 +1,6 @@
 import {
   createLocalLearnerProgressPersistence,
+  loadLearnerProgress,
   persistLearnerProgress,
   type StoredLearnerProgress,
 } from "./local-progress";
@@ -10,11 +11,20 @@ export async function persistLearnerJourneyProgress(
   storage: BrowserProgressStorage,
   progress: StoredLearnerProgress,
 ) {
+  let progressToSend = progress;
   try {
-    await persistLearnerProgress(
-      createLocalLearnerProgressPersistence(storage),
-      progress,
-    );
+    const persistence = createLocalLearnerProgressPersistence(storage);
+    await persistLearnerProgress(persistence, progress);
+    const localProgress = await loadLearnerProgress(persistence, progress.learnerId);
+    if (localProgress) {
+      progressToSend = {
+        ...progress,
+        progressRecords: localProgress.progressRecords.map((record) => ({
+          ...record,
+          recordedAt: record.recordedAt.toISOString(),
+        })),
+      };
+    }
   } catch {
     // Keep the learning flow available if browser storage is unavailable.
   }
@@ -23,7 +33,7 @@ export async function persistLearnerJourneyProgress(
     await fetch("/api/learner-progress", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(progress),
+      body: JSON.stringify(progressToSend),
     });
   } catch {
     // Keep the learning flow available if remote persistence is unavailable.

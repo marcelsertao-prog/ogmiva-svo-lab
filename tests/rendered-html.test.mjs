@@ -1763,6 +1763,74 @@ test("sends learner journey progress to the authenticated persistence endpoint",
   assert.deepEqual(await request.json(), snapshot);
 });
 
+test("replays locally preserved assessment history after a failed remote save", async (t) => {
+  const { persistLearnerJourneyProgress } =
+    await importAppModuleWithLocalProgress(
+      "../app/learner-progress-client.ts",
+      "learner-progress-client.ts",
+    );
+  const storedProgress = new Map();
+  const storage = {
+    getItem: (key) => storedProgress.get(key) ?? null,
+    setItem: (key, value) => storedProgress.set(key, value),
+  };
+  const incorrectAttempt = {
+    recordId: "listening-01-offline-attempt",
+    learnerId: "learner-2",
+    activityId: "LISTEN-SVO-01",
+    skillId: "listening-svo-recognition",
+    completed: false,
+    score: 0,
+    attemptNumber: 1,
+    timeSpentSeconds: 12,
+    recordedAt: "2026-09-14T10:00:00.000Z",
+  };
+  const subsequentAttempt = {
+    ...incorrectAttempt,
+    recordId: "listening-02-online-attempt",
+    activityId: "LISTEN-SVO-02",
+    skillId: "listening-svo-construction",
+    completed: true,
+    score: 1,
+    recordedAt: "2026-09-14T10:05:00.000Z",
+  };
+  const remoteRequests = [];
+  t.mock.method(globalThis, "fetch", async (input, init) => {
+    const request = input instanceof Request
+      ? input
+      : new Request(new URL(String(input), "http://localhost"), init);
+    remoteRequests.push(await request.json());
+    if (remoteRequests.length === 1) {
+      throw new Error("Network unavailable");
+    }
+    return new Response(null, { status: 204 });
+  });
+
+  await persistLearnerJourneyProgress(storage, {
+    learnerId: "learner-2",
+    completedActivityIds: ["SVO-01"],
+    completedListeningActivityIds: [],
+    progressRecords: [incorrectAttempt],
+  });
+  assert.deepEqual(
+    JSON.parse(storedProgress.get("spread11:learner-2:svo-progress")).progressRecords,
+    [incorrectAttempt],
+  );
+
+  await persistLearnerJourneyProgress(storage, {
+    learnerId: "learner-2",
+    completedActivityIds: ["SVO-01", "SVO-02"],
+    completedListeningActivityIds: ["LISTEN-SVO-02"],
+    progressRecords: [subsequentAttempt],
+  });
+
+  assert.equal(remoteRequests.length, 2);
+  assert.deepEqual(remoteRequests[1].progressRecords, [
+    incorrectAttempt,
+    subsequentAttempt,
+  ]);
+});
+
 test("does not render a learner journey when the external identity has no learner association", async () => {
   const response = await fetchRenderedHome({
     "oai-authenticated-user-id": "unassociated-external-user",
