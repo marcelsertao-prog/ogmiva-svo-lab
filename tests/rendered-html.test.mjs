@@ -2121,6 +2121,67 @@ test("restores one learner's snapshot in another browser without sharing local s
   })), [learnerAProgressRecord]);
 });
 
+test("restores incorrect and correct Listening 01 attempts from D1", async () => {
+  const incorrectAttempt = {
+    recordId: "listening-01-attempt-1",
+    learnerId: "learner-1",
+    activityId: "LISTEN-SVO-01",
+    skillId: "listening-svo-recognition",
+    completed: false,
+    score: 0,
+    attemptNumber: 1,
+    timeSpentSeconds: 12,
+    recordedAt: "2026-09-13T10:00:00.000Z",
+  };
+  const correctAttempt = {
+    ...incorrectAttempt,
+    recordId: "listening-01-attempt-2",
+    completed: true,
+    score: 1,
+    attemptNumber: 2,
+    recordedAt: "2026-09-13T10:05:00.000Z",
+  };
+  const sharedSnapshots = new Map();
+  const database = {
+    prepare: () => ({
+      bind: (learnerId, snapshot) => ({
+        first: async () => {
+          const storedSnapshot = sharedSnapshots.get(learnerId);
+          return storedSnapshot ? { snapshot: storedSnapshot } : null;
+        },
+        run: async () => {
+          sharedSnapshots.set(learnerId, snapshot);
+        },
+      }),
+    }),
+  };
+  const persistence = createD1LearnerProgressPersistence(database);
+  const initialSnapshot = {
+    learnerId: "learner-1",
+    completedActivityIds: ["SVO-01"],
+    completedListeningActivityIds: [],
+    progressRecords: [incorrectAttempt],
+  };
+  await persistLearnerProgress(persistence, initialSnapshot);
+  await persistLearnerProgress(persistence, {
+    ...initialSnapshot,
+    completedListeningActivityIds: ["LISTEN-SVO-01"],
+    progressRecords: [correctAttempt],
+  });
+
+  const restored = await loadLearnerProgress(
+    createD1LearnerProgressPersistence(database),
+    "learner-1",
+  );
+
+  assert.ok(restored);
+  assert.equal(restored.isListening01Complete, true);
+  assert.deepEqual(restored.progressRecords.map((record) => ({
+    ...record,
+    recordedAt: record.recordedAt.toISOString(),
+  })), [incorrectAttempt, correctAttempt]);
+});
+
 test("restores progress for the active learner after another learner used the same browser", async () => {
   const storedProgressByKey = new Map([
     ["spread11:learner-a:svo-progress", JSON.stringify({
