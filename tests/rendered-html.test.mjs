@@ -2333,6 +2333,35 @@ test("adds assessed Listening 02 progress to the learner snapshot", () => {
   }]);
 });
 
+test("preserves an incorrect Listening 02 assessment without completing the activity", () => {
+  const progressRecord = {
+    recordId: "progress-listening-02-incorrect",
+    learnerId: "learner-1",
+    activityId: "LISTEN-SVO-02",
+    skillId: "basic-svo-listening",
+    completed: false,
+    score: 0,
+    attemptNumber: 1,
+    timeSpentSeconds: 12,
+    recordedAt: new Date("2026-09-08T10:00:00.000Z"),
+  };
+  const completedProgress = completeListening02Progress({
+    learnerId: "learner-1",
+    completedActivityIds: ["SVO-01"],
+    completedListeningActivityIds: [],
+    progressRecords: [],
+  }, progressRecord);
+
+  assert.deepEqual(completedProgress.progressRecords, [{
+    ...progressRecord,
+    recordedAt: progressRecord.recordedAt.toISOString(),
+  }]);
+  assert.equal(
+    completedProgress.completedListeningActivityIds?.includes("LISTEN-SVO-02"),
+    false,
+  );
+});
+
 test("adds assessed Listening 03 progress to the learner snapshot", () => {
   const previousRecord = {
     recordId: "progress-listening-02",
