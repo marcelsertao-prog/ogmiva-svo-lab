@@ -2732,6 +2732,29 @@ test("does not duplicate a previously persisted assessment record", async () => 
   assert.deepEqual(persistedProgress.progressRecords, [progressRecord]);
 });
 
+test("does not duplicate assessment records within a new batch", async () => {
+  const progressRecord = {
+    recordId: "progress-listening-01-1",
+    learnerId: "learner-1",
+    activityId: "LISTEN-SVO-01",
+    skillId: "listening-svo-recognition",
+    completed: true,
+    score: 1,
+    attemptNumber: 1,
+    timeSpentSeconds: 12,
+    recordedAt: "2026-09-08T10:00:00.000Z",
+  };
+  const nextProgress = {
+    learnerId: "learner-1",
+    completedActivityIds: ["SVO-01"],
+    completedListeningActivityIds: ["LISTEN-SVO-01"],
+    progressRecords: [progressRecord, progressRecord],
+  };
+  const persistedProgress = await persistProgressInMemory(undefined, nextProgress);
+
+  assert.deepEqual(persistedProgress.progressRecords, [progressRecord]);
+});
+
 test("persists progress under the learner's own storage key", async () => {
   const nextProgress = {
     learnerId: "learner-b",

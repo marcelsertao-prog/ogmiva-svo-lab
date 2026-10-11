@@ -71,7 +71,11 @@ export async function persistLearnerProgress(
     ? restoreLearnerProgress(storedProgress, progress.learnerId)
     : null;
   const learnerProgressRecords = progress.progressRecords
-    ?.filter((record) => record.learnerId === progress.learnerId);
+    ?.filter((record) => record.learnerId === progress.learnerId)
+    .filter((record, index, records) =>
+      records.findIndex((candidate) => candidate.recordId === record.recordId)
+      === index
+    );
   const nextProgress = restoredProgress
     ? {
       ...progress,
