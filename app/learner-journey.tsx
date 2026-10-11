@@ -434,7 +434,7 @@ export function LearnerJourney({
           createLocalLearnerProgressPersistence(window.localStorage),
           learnerId,
         );
-        const restoredProgress = localProgress ?? restoredInitialProgress;
+        const restoredProgress = restoredInitialProgress ?? localProgress;
         if (!restoredProgress) {
           clearJourneyCompletion();
           return;
