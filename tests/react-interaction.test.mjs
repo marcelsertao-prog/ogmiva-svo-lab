@@ -706,6 +706,128 @@ test("persists an incorrect Listening 04 assessment without completing the activ
   }
 });
 
+test("persists an incorrect Listening 05 assessment without completing the activity", async (t) => {
+  const requests = [];
+  const previousSpeechSynthesisUtterance = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "SpeechSynthesisUtterance",
+  );
+  t.mock.method(globalThis, "fetch", async (input, init) => {
+    const request = input instanceof Request
+      ? input
+      : new Request(new URL(String(input), "http://localhost"), init);
+    requests.push(request);
+    return new Response(null, { status: 204 });
+  });
+
+  const mounted = await mountLearnerJourney({
+    learnerId: "learner-1",
+    initialProgress: {
+      learnerId: "learner-1",
+      completedActivityIds: ["SVO-01", "SVO-02", "SVO-03", "SVO-04", "SVO-05"],
+      completedListeningActivityIds: [
+        "LISTEN-SVO-01", "LISTEN-SVO-02", "LISTEN-SVO-03", "LISTEN-SVO-04",
+      ],
+    },
+  }, {
+    prepareWindow(browserWindow) {
+      const SpeechSynthesisUtterance = class {
+        onend;
+      };
+      browserWindow.SpeechSynthesisUtterance = SpeechSynthesisUtterance;
+      globalThis.SpeechSynthesisUtterance = SpeechSynthesisUtterance;
+      browserWindow.speechSynthesis = {
+        cancel() {},
+        speak(utterance) {
+          utterance.onend?.();
+        },
+      };
+    },
+  });
+
+  try {
+    const listeningCard = mounted.container.querySelector(
+      '.stage-listening[aria-labelledby="listening-05-title"]',
+    );
+    assert.ok(listeningCard);
+    assert.match(listeningCard.textContent ?? "", /Listening 05/);
+
+    const playButton = listeningCard.querySelector(".audio-button");
+    assert.ok(playButton);
+    await act(async () => {
+      playButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    for (const [role, label] of [
+      ["Subject", "Carlos"],
+      ["Verb", "plays"],
+      ["Object", "movies"],
+    ]) {
+      const slot = [...listeningCard.querySelectorAll(".listening-role-slot")]
+        .find((button) => button.getAttribute("aria-label") === `Select ${role} slot`);
+      assert.ok(slot);
+      await act(async () => {
+        slot.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+
+      const tile = [...listeningCard.querySelectorAll(".word-bank .word-tile")]
+        .find((button) => button.textContent?.trim() === label);
+      assert.ok(tile);
+      await act(async () => {
+        tile.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+    }
+
+    const checkButton = [...listeningCard.querySelectorAll(
+      ".listening-actions button",
+    )].find((button) => button.textContent?.includes("Check roles"));
+    assert.ok(checkButton);
+
+    await act(async () => {
+      checkButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    assert.match(
+      listeningCard.querySelector('[role="alert"]')?.textContent ?? "",
+      /Not quite/,
+    );
+    assert.equal(requests.length, 1);
+
+    const [request] = requests;
+    assert.equal(request.url, "http://localhost/api/learner-progress");
+    assert.equal(request.method, "POST");
+
+    const snapshot = await request.json();
+    assert.equal(snapshot.progressRecords.length, 1);
+    const [progressRecord] = snapshot.progressRecords;
+    assert.equal(progressRecord.activityId, "LISTEN-SVO-05");
+    assert.equal(progressRecord.completed, false);
+    assert.equal(progressRecord.score, 2 / 3);
+    assert.equal(typeof progressRecord.recordedAt, "string");
+    assert.equal(
+      new Date(progressRecord.recordedAt).toISOString(),
+      progressRecord.recordedAt,
+    );
+    assert.equal(
+      snapshot.completedListeningActivityIds.includes("LISTEN-SVO-05"),
+      false,
+    );
+  } finally {
+    if (previousSpeechSynthesisUtterance) {
+      Object.defineProperty(
+        globalThis,
+        "SpeechSynthesisUtterance",
+        previousSpeechSynthesisUtterance,
+      );
+    } else {
+      delete globalThis.SpeechSynthesisUtterance;
+    }
+    await mounted.cleanup();
+  }
+});
+
 test("prevents duplicate Speaking 01 attempts while recognition is pending", async () => {
   let recognitionCount = 0;
   let resolveRecognition;
