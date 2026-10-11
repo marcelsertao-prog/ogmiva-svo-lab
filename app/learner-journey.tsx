@@ -434,7 +434,27 @@ export function LearnerJourney({
           createLocalLearnerProgressPersistence(window.localStorage),
           learnerId,
         );
-        const restoredProgress = restoredInitialProgress ?? localProgress;
+        const restoredProgress = restoredInitialProgress && localProgress
+          ? {
+              ...restoredInitialProgress,
+              completedActivityIds: [
+                ...new Set([
+                  ...restoredInitialProgress.completedActivityIds,
+                  ...localProgress.completedActivityIds,
+                ]),
+              ],
+              isListening01Complete:
+                restoredInitialProgress.isListening01Complete || localProgress.isListening01Complete,
+              isListening02Complete:
+                restoredInitialProgress.isListening02Complete || localProgress.isListening02Complete,
+              isListening03Complete:
+                restoredInitialProgress.isListening03Complete || localProgress.isListening03Complete,
+              isListening04Complete:
+                restoredInitialProgress.isListening04Complete || localProgress.isListening04Complete,
+              isListening05Complete:
+                restoredInitialProgress.isListening05Complete || localProgress.isListening05Complete,
+            }
+          : restoredInitialProgress ?? localProgress;
         if (!restoredProgress) {
           clearJourneyCompletion();
           return;

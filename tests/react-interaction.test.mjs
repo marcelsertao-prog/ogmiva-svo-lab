@@ -219,6 +219,44 @@ test("prefers restored server progress over stale local progress", async () => {
   }
 });
 
+test("preserves newer local completion when server progress is stale", async () => {
+  const learnerId = "learner-1";
+  const mounted = await mountLearnerJourney({
+    learnerId,
+    initialProgress: {
+      learnerId,
+      completedActivityIds: ["SVO-01"],
+      completedListeningActivityIds: [],
+    },
+  }, {
+    prepareWindow(browserWindow) {
+      browserWindow.localStorage.setItem(
+        `spread11:${learnerId}:svo-progress`,
+        JSON.stringify({
+          learnerId,
+          completedActivityIds: ["SVO-01"],
+          completedListeningActivityIds: ["LISTEN-SVO-01"],
+        }),
+      );
+    },
+  });
+
+  try {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    const stage = mounted.container.querySelector(
+      '[data-stage-id="SVO-LISTENING-01"]',
+    );
+    assert.ok(stage);
+    assert.equal(stage.getAttribute("data-stage-progress"), "2/2");
+    assert.equal(stage.getAttribute("data-stage-state"), "complete");
+  } finally {
+    await mounted.cleanup();
+  }
+});
+
 test("persists the correct Speaking 01 ProgressRecord for the active learner", async (t) => {
   const requests = [];
   t.mock.method(globalThis, "fetch", async (input, init) => {
