@@ -1893,6 +1893,43 @@ test("replays locally preserved assessment history after an HTTP 503 response", 
   assert.deepEqual(requests[1].progressRecords, [rejectedAttempt, laterAttempt]);
 });
 
+test("reports remote persistence failure after an HTTP 503 response", async (t) => {
+  const { persistLearnerJourneyProgress } =
+    await importAppModuleWithLocalProgress(
+      "../app/learner-progress-client.ts",
+      "learner-progress-client.ts",
+    );
+  const storedProgress = new Map();
+  const storage = {
+    getItem: (key) => storedProgress.get(key) ?? null,
+    setItem: (key, value) => storedProgress.set(key, value),
+  };
+  const snapshot = {
+    learnerId: "learner-2",
+    completedActivityIds: ["SVO-01"],
+    progressRecords: [{
+      recordId: "listening-01-http-503-confirmation",
+      learnerId: "learner-2",
+      activityId: "LISTEN-SVO-01",
+      skillId: "listening-svo-recognition",
+      completed: false,
+      score: 0,
+      attemptNumber: 1,
+      timeSpentSeconds: 12,
+      recordedAt: "2026-09-14T10:00:00.000Z",
+    }],
+  };
+  t.mock.method(globalThis, "fetch", async () =>
+    new Response(null, { status: 503 }));
+
+  const result = await persistLearnerJourneyProgress(storage, snapshot);
+
+  assert.deepEqual(JSON.parse(
+    storedProgress.get("spread11:learner-2:svo-progress"),
+  ).progressRecords, snapshot.progressRecords);
+  assert.deepEqual(result, { remoteSaved: false });
+});
+
 test("does not render a learner journey when the external identity has no learner association", async () => {
   const response = await fetchRenderedHome({
     "oai-authenticated-user-id": "unassociated-external-user",

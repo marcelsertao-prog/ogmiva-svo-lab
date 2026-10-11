@@ -30,12 +30,15 @@ export async function persistLearnerJourneyProgress(
   }
 
   try {
-    await fetch("/api/learner-progress", {
+    const response = await fetch("/api/learner-progress", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(progressToSend),
     });
+
+    return { remoteSaved: response.ok };
   } catch {
     // Keep the learning flow available if remote persistence is unavailable.
+    return { remoteSaved: false };
   }
 }
