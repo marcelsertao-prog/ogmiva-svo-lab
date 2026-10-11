@@ -350,6 +350,123 @@ test("persists an incorrect Listening 01 assessment without completing the activ
   }
 });
 
+test("persists an incorrect Listening 02 assessment without completing the activity", async (t) => {
+  const requests = [];
+  const previousSpeechSynthesisUtterance = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "SpeechSynthesisUtterance",
+  );
+  t.mock.method(globalThis, "fetch", async (input, init) => {
+    const request = input instanceof Request
+      ? input
+      : new Request(new URL(String(input), "http://localhost"), init);
+    requests.push(request);
+    return new Response(null, { status: 204 });
+  });
+
+  const mounted = await mountLearnerJourney({
+    learnerId: "learner-1",
+    initialProgress: {
+      learnerId: "learner-1",
+      completedActivityIds: ["SVO-01", "SVO-02"],
+      completedListeningActivityIds: ["LISTEN-SVO-01"],
+    },
+  }, {
+    prepareWindow(browserWindow) {
+      const SpeechSynthesisUtterance = class {
+        onend;
+      };
+      browserWindow.SpeechSynthesisUtterance = SpeechSynthesisUtterance;
+      globalThis.SpeechSynthesisUtterance = SpeechSynthesisUtterance;
+      browserWindow.speechSynthesis = {
+        cancel() {},
+        speak(utterance) {
+          utterance.onend?.();
+        },
+      };
+    },
+  });
+
+  try {
+    const listeningCard = mounted.container.querySelector(
+      '.stage-listening[aria-labelledby="listening-02-title"]',
+    );
+    assert.ok(listeningCard);
+    assert.match(listeningCard.textContent ?? "", /Listening 02/);
+
+    const playButton = listeningCard.querySelector(".audio-button");
+    assert.ok(playButton);
+    assert.match(playButton.textContent ?? "", /Continue to Listening 02/);
+
+    await act(async () => {
+      playButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    for (const label of ["letters", "Maya", "writes"]) {
+      const tile = [...listeningCard.querySelectorAll(".word-bank .word-tile")]
+        .find((candidate) => candidate.textContent?.trim() === label);
+      assert.ok(tile);
+      await act(async () => {
+        tile.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+    }
+
+    assert.deepEqual(
+      [...listeningCard.querySelectorAll(".answer-zone .word-tile")]
+        .map((tile) => tile.textContent?.replace(/^\d+/, "").trim()),
+      ["letters", "Maya", "writes"],
+    );
+
+    const checkButton = [...listeningCard.querySelectorAll(
+      ".listening-actions button",
+    )].find((button) => button.textContent?.includes("Check reconstruction"));
+    assert.ok(checkButton);
+
+    await act(async () => {
+      checkButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    assert.match(
+      listeningCard.querySelector('[role="alert"]')?.textContent ?? "",
+      /Not quite/,
+    );
+    assert.equal(requests.length, 1);
+
+    const [request] = requests;
+    assert.equal(request.url, "http://localhost/api/learner-progress");
+    assert.equal(request.method, "POST");
+
+    const snapshot = await request.json();
+    assert.equal(snapshot.progressRecords.length, 1);
+    const [progressRecord] = snapshot.progressRecords;
+    assert.equal(progressRecord.activityId, "LISTEN-SVO-02");
+    assert.equal(progressRecord.completed, false);
+    assert.equal(progressRecord.score, 0);
+    assert.equal(typeof progressRecord.recordedAt, "string");
+    assert.equal(
+      new Date(progressRecord.recordedAt).toISOString(),
+      progressRecord.recordedAt,
+    );
+    assert.equal(
+      snapshot.completedListeningActivityIds.includes("LISTEN-SVO-02"),
+      false,
+    );
+  } finally {
+    if (previousSpeechSynthesisUtterance) {
+      Object.defineProperty(
+        globalThis,
+        "SpeechSynthesisUtterance",
+        previousSpeechSynthesisUtterance,
+      );
+    } else {
+      delete globalThis.SpeechSynthesisUtterance;
+    }
+    await mounted.cleanup();
+  }
+});
+
 test("prevents duplicate Speaking 01 attempts while recognition is pending", async () => {
   let recognitionCount = 0;
   let resolveRecognition;
