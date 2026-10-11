@@ -2546,6 +2546,36 @@ test("adds assessed Listening 05 progress to the learner snapshot", () => {
   ]);
 });
 
+test("preserves an incorrect Listening 05 assessment without completing the activity", () => {
+  const progressRecord = {
+    recordId: "progress-listening-05-incorrect",
+    learnerId: "learner-1",
+    activityId: listening05Activity.id,
+    skillId: listening05Activity.skillIds[0],
+    completed: false,
+    score: 2 / 3,
+    attemptNumber: 1,
+    timeSpentSeconds: 22,
+    recordedAt: new Date("2026-09-10T10:00:00.000Z"),
+  };
+  const completedProgress = completeListening05Progress({
+    learnerId: "learner-1",
+    completedActivityIds: ["SVO-01", "SVO-02", "SVO-03", "SVO-04", "SVO-05"],
+    completedListeningActivityIds: ["LISTEN-SVO-04"],
+    progressRecords: [],
+  }, progressRecord);
+
+  assert.deepEqual(completedProgress.progressRecords, [{
+    ...progressRecord,
+    recordedAt: progressRecord.recordedAt.toISOString(),
+  }]);
+  assert.deepEqual(completedProgress.completedListeningActivityIds, ["LISTEN-SVO-04"]);
+  assert.equal(
+    completedProgress.completedListeningActivityIds?.includes("LISTEN-SVO-05"),
+    false,
+  );
+});
+
 test("does not add assessed progress belonging to another learner", () => {
   const completedProgress = completeListening01Progress({
     learnerId: "learner-a",
