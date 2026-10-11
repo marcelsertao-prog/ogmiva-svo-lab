@@ -80,7 +80,11 @@ export async function persistLearnerProgress(
           ...record,
           recordedAt: record.recordedAt.toISOString(),
         })),
-        ...(learnerProgressRecords ?? []),
+        ...(learnerProgressRecords ?? []).filter(
+          (record) => !restoredProgress.progressRecords.some(
+            (storedRecord) => storedRecord.recordId === record.recordId,
+          ),
+        ),
       ],
     }
     : {
