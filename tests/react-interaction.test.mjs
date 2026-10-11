@@ -257,6 +257,58 @@ test("preserves newer local completion when server progress is stale", async () 
   }
 });
 
+test("shows unsynced progress after an HTTP 503 response", async (t) => {
+  const requests = [];
+  t.mock.method(globalThis, "fetch", async (input, init) => {
+    const request = input instanceof Request
+      ? input
+      : new Request(new URL(String(input), "http://localhost"), init);
+    requests.push(request);
+    return new Response(null, { status: 503 });
+  });
+
+  const mounted = await mountLearnerJourney({
+    learnerId: "learner-2",
+    initialProgress: {
+      learnerId: "learner-2",
+      completedActivityIds: ["SVO-01"],
+      completedListeningActivityIds: ["LISTEN-SVO-01"],
+    },
+    recognizeSpeaking01: async () => ({
+      recognizedText: "Anna likes music.",
+    }),
+  });
+
+  try {
+    const speakingCard = mounted.container.querySelector(
+      '[data-activity-id="SPEAK-SVO-01"]',
+    );
+    assert.ok(speakingCard);
+    const startButton = speakingCard.querySelector(
+      '[data-speaking-action="start"]',
+    );
+    assert.ok(startButton);
+
+    await act(async () => {
+      startButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    assert.equal(requests.length, 1);
+    const storedProgress = JSON.parse(
+      window.localStorage.getItem("spread11:learner-2:svo-progress"),
+    );
+    assert.equal(storedProgress.progressRecords.length, 1);
+    assert.equal(storedProgress.progressRecords[0].activityId, "SPEAK-SVO-01");
+    assert.match(
+      mounted.container.textContent ?? "",
+      /Progresso ainda não sincronizado/i,
+    );
+  } finally {
+    await mounted.cleanup();
+  }
+});
+
 test("persists the correct Speaking 01 ProgressRecord for the active learner", async (t) => {
   const requests = [];
   t.mock.method(globalThis, "fetch", async (input, init) => {

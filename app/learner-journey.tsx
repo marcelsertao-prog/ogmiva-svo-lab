@@ -223,6 +223,7 @@ export function LearnerJourney({
     initialCompletedActivityIds,
   );
   const [screen, setScreen] = useState<Screen>("journey");
+  const [isRemoteProgressUnsynced, setIsRemoteProgressUnsynced] = useState(false);
   const [isSvo01Complete, setIsSvo01Complete] = useState(
     initialSvoCompletion.isSvo01Complete,
   );
@@ -533,7 +534,8 @@ export function LearnerJourney({
   }
 
   async function persistProgress(progress: StoredLearnerProgress) {
-    await persistLearnerJourneyProgress(window.localStorage, progress);
+    const { remoteSaved } = await persistLearnerJourneyProgress(window.localStorage, progress);
+    setIsRemoteProgressUnsynced(!remoteSaved);
   }
 
   function addToAnswer(tile: Tile) {
@@ -1504,6 +1506,9 @@ export function LearnerJourney({
         </div>
       </header>
 
+      {isRemoteProgressUnsynced && (
+        <p role="status">Progresso ainda não sincronizado</p>
+      )}
       {screen === "journey" ? (
         <section className="journey-layout" aria-labelledby="journey-title">
           <div className="journey-heading">
