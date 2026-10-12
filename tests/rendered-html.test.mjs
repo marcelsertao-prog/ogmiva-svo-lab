@@ -1581,6 +1581,47 @@ test("saves completed Listening 01 progress under the authenticated resolved lea
   });
 });
 
+test("isolates verified Listening 01 attempts from legacy learner progress", async (t) => {
+  const { database } = await createMigratedOgmivaHarness(
+    t,
+    "verified-listening01-isolation",
+  );
+  const legacySnapshot = {
+    learnerId: "learner-2",
+    completedActivityIds: ["SVO-01"],
+    completedListeningActivityIds: ["LISTEN-SVO-01"],
+    progressRecords: [],
+  };
+  await database.prepare(`
+    INSERT INTO learner_progress (learner_id, snapshot)
+    VALUES (?, ?)
+  `).bind("learner-2", JSON.stringify(legacySnapshot)).run();
+
+  const verifiedTable = await database.prepare(`
+    SELECT name FROM sqlite_master
+    WHERE type = 'table' AND name = 'verified_listening01_attempts'
+  `).first();
+  assert.ok(verifiedTable, "verified Listening 01 attempts need isolated D1 storage");
+
+  const { results: columns } = await database.prepare(`
+    PRAGMA table_info(verified_listening01_attempts)
+  `).all();
+  const columnNames = columns.map((column) => column.name);
+  for (const requiredColumn of [
+    "learner_id", "record_id", "activity_id", "selected_answer",
+    "score", "completed", "verified_at",
+  ]) {
+    assert.ok(columnNames.includes(requiredColumn), `missing ${requiredColumn}`);
+  }
+  assert.equal(columns.find((column) => column.name === "learner_id")?.pk, 1);
+  assert.equal(columns.find((column) => column.name === "record_id")?.pk, 2);
+
+  const storedLegacy = await database.prepare(`
+    SELECT snapshot FROM learner_progress WHERE learner_id = ?
+  `).bind("learner-2").first();
+  assert.deepEqual(JSON.parse(storedLegacy.snapshot), legacySnapshot);
+});
+
 test("saves learner progress under the learner resolved from a valid Ogmiva session", async () => {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
