@@ -259,6 +259,7 @@ export function LearnerJourney({
   const [listeningAudioError, setListeningAudioError] = useState(false);
   const [selectedListeningChoice, setSelectedListeningChoice] = useState<string | null>(null);
   const [listeningFeedback, setListeningFeedback] = useState<Feedback>("idle");
+  const [isListening01VerificationUnconfirmed, setIsListening01VerificationUnconfirmed] = useState(false);
   const [isListening01Complete, setIsListening01Complete] = useState(
     restoredInitialProgress?.isListening01Complete ?? false,
   );
@@ -618,6 +619,7 @@ export function LearnerJourney({
     setListeningAudioError(false);
     setSelectedListeningChoice(null);
     setListeningFeedback(resetState.feedback);
+    setIsListening01VerificationUnconfirmed(false);
     setIsListening01Complete(resetState.isListening01Complete);
     setListening01Session(null);
   }
@@ -816,6 +818,7 @@ export function LearnerJourney({
 
     setListening01Session(result.session);
     setListeningFeedback(result.feedback);
+    setIsListening01VerificationUnconfirmed(false);
 
     if (
       result.feedback === "correct"
@@ -823,7 +826,7 @@ export function LearnerJourney({
     ) {
       if (selectedListeningChoice && result.progress) {
         try {
-          await fetch("/api/listening-01-attempts", {
+          const response = await fetch("/api/listening-01-attempts", {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
@@ -832,7 +835,9 @@ export function LearnerJourney({
               selectedAnswer: selectedListeningChoice,
             }),
           });
+          setIsListening01VerificationUnconfirmed(!response.ok);
         } catch {
+          setIsListening01VerificationUnconfirmed(true);
           // Keep historical progress available when verification is offline.
         }
       }
@@ -1693,6 +1698,7 @@ export function LearnerJourney({
                               onChange={() => {
                                 setSelectedListeningChoice(choice.label);
                                 setListeningFeedback("idle");
+                                setIsListening01VerificationUnconfirmed(false);
                               }}
                             />
                             <span className="choice-letter" aria-hidden="true">{String.fromCharCode(65 + index)}</span>
@@ -1721,6 +1727,10 @@ export function LearnerJourney({
                         <span className="feedback-icon">✓</span>
                         <div><strong>Great listening!</strong><p>You correctly identified the sentence you heard.</p></div>
                       </div>
+                    )}
+
+                    {isListening01VerificationUnconfirmed && (
+                      <p role="status">Verificação da resposta ainda não confirmada.</p>
                     )}
 
                     <div className="activity-actions listening-actions">

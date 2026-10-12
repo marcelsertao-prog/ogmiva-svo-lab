@@ -724,6 +724,89 @@ test("submits the Listening 01 learner choice to server verification", async (t)
   }
 });
 
+test("does not report Listening 01 verification as confirmed after HTTP 503", async (t) => {
+  const requests = [];
+  const previousSpeechSynthesisUtterance = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "SpeechSynthesisUtterance",
+  );
+  t.mock.method(globalThis, "fetch", async (input, init) => {
+    const request = input instanceof Request
+      ? input
+      : new Request(new URL(String(input), "http://localhost"), init);
+    requests.push(request);
+    if (request.url === "http://localhost/api/listening-01-attempts") {
+      return new Response(null, { status: 503 });
+    }
+    assert.equal(request.url, "http://localhost/api/learner-progress");
+    return new Response(null, { status: 204 });
+  });
+
+  const mounted = await mountLearnerJourney({
+    learnerId: "learner-1",
+    initialProgress: {
+      learnerId: "learner-1",
+      completedActivityIds: ["SVO-01"],
+      completedListeningActivityIds: [],
+    },
+  }, {
+    prepareWindow(browserWindow) {
+      const SpeechSynthesisUtterance = class { onend; };
+      browserWindow.SpeechSynthesisUtterance = SpeechSynthesisUtterance;
+      globalThis.SpeechSynthesisUtterance = SpeechSynthesisUtterance;
+      browserWindow.speechSynthesis = {
+        cancel() {},
+        speak(utterance) { utterance.onend?.(); },
+      };
+    },
+  });
+
+  try {
+    const listeningCard = mounted.container.querySelector(".stage-listening");
+    assert.ok(listeningCard);
+    const playButton = listeningCard.querySelector(".audio-button");
+    assert.ok(playButton);
+    await act(async () => {
+      playButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    const incorrectChoice = listeningCard.querySelector(
+      'input[name="listening-svo-choice"][value="Likes Anna music."]',
+    );
+    assert.ok(incorrectChoice);
+    await act(async () => { incorrectChoice.click(); });
+
+    const checkButton = listeningCard.querySelector(".listening-actions button");
+    assert.ok(checkButton);
+    await act(async () => {
+      checkButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    assert.ok(requests.some((request) =>
+      request.url === "http://localhost/api/listening-01-attempts"));
+    assert.ok(requests.some((request) =>
+      request.url === "http://localhost/api/learner-progress"));
+    assert.match(
+      listeningCard.querySelector('[role="alert"]')?.textContent ?? "",
+      /Not quite/,
+    );
+    assert.match(
+      mounted.container.textContent ?? "",
+      /Verificação da resposta ainda não confirmada\./,
+      "HTTP 503 must not be presented as confirmed server verification",
+    );
+  } finally {
+    if (previousSpeechSynthesisUtterance) {
+      Object.defineProperty(globalThis, "SpeechSynthesisUtterance", previousSpeechSynthesisUtterance);
+    } else {
+      delete globalThis.SpeechSynthesisUtterance;
+    }
+    await mounted.cleanup();
+  }
+});
+
 test("persists an incorrect Listening 02 assessment without completing the activity", async (t) => {
   const requests = [];
   const previousSpeechSynthesisUtterance = Object.getOwnPropertyDescriptor(
