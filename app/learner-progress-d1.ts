@@ -83,7 +83,44 @@ export function createD1LearnerProgressPersistence(
             updated_at
           ) VALUES (?, ?, CURRENT_TIMESTAMP)
           ON CONFLICT (learner_id) DO UPDATE SET
-            snapshot = excluded.snapshot,
+            snapshot = json_set(
+              excluded.snapshot,
+              '$.completedActivityIds', json((
+                SELECT json_group_array(activity_id)
+                FROM (
+                  SELECT value AS activity_id
+                  FROM json_each(COALESCE(json_extract(learner_progress.snapshot, '$.completedActivityIds'), '[]'))
+                  UNION
+                  SELECT value AS activity_id
+                  FROM json_each(COALESCE(json_extract(excluded.snapshot, '$.completedActivityIds'), '[]'))
+                )
+              )),
+              '$.completedListeningActivityIds', json((
+                SELECT json_group_array(activity_id)
+                FROM (
+                  SELECT value AS activity_id
+                  FROM json_each(COALESCE(json_extract(learner_progress.snapshot, '$.completedListeningActivityIds'), '[]'))
+                  UNION
+                  SELECT value AS activity_id
+                  FROM json_each(COALESCE(json_extract(excluded.snapshot, '$.completedListeningActivityIds'), '[]'))
+                )
+              )),
+              '$.progressRecords', json((
+                SELECT json_group_array(json(record.value))
+                FROM (
+                  SELECT stored.value
+                  FROM json_each(COALESCE(json_extract(learner_progress.snapshot, '$.progressRecords'), '[]')) AS stored
+                  UNION ALL
+                  SELECT incoming.value
+                  FROM json_each(COALESCE(json_extract(excluded.snapshot, '$.progressRecords'), '[]')) AS incoming
+                  WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM json_each(COALESCE(json_extract(learner_progress.snapshot, '$.progressRecords'), '[]')) AS stored
+                    WHERE json_extract(stored.value, '$.recordId') = json_extract(incoming.value, '$.recordId')
+                  )
+                ) AS record
+              ))
+            ),
             updated_at = CURRENT_TIMESTAMP
         `)
         .bind(learnerId, JSON.stringify(snapshot))

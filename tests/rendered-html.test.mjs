@@ -2349,6 +2349,93 @@ test("restores incorrect and correct Listening 01 attempts from D1", async () =>
   })), [incorrectAttempt, correctAttempt]);
 });
 
+test("preserves both D1 assessment records when concurrent saves read the same snapshot", async (t) => {
+  const miniflare = new Miniflare({
+    modules: true,
+    script: `export default {
+      fetch() { return new Response(null, { status: 204 }); }
+    }`,
+    compatibilityDate: "2026-05-15",
+    d1Databases: { DB: `concurrent-progress-${process.pid}-${Date.now()}` },
+  });
+  t.after(() => miniflare.dispose());
+  const database = await miniflare.getD1Database("DB");
+  await applyD1Migrations(database);
+
+  let initialReads = 0;
+  let releaseInitialReads;
+  const initialReadsFinished = new Promise((resolve) => {
+    releaseInitialReads = resolve;
+  });
+  const concurrentDatabase = {
+    prepare(query) {
+      const statement = database.prepare(query);
+      return {
+        bind(...values) {
+          const bound = statement.bind(...values);
+          return {
+            async first() {
+              const result = await bound.first();
+              if (/SELECT snapshot/.test(query)) {
+                initialReads += 1;
+                if (initialReads === 2) releaseInitialReads();
+                if (initialReads <= 2) await initialReadsFinished;
+              }
+              return result;
+            },
+            run: () => bound.run(),
+          };
+        },
+      };
+    },
+  };
+  const persistence = createD1LearnerProgressPersistence(concurrentDatabase);
+  const firstAttempt = {
+    recordId: "concurrent-listening-01-a",
+    learnerId: "learner-1",
+    activityId: "LISTEN-SVO-01",
+    skillId: "listening-svo-recognition",
+    completed: false,
+    score: 0,
+    attemptNumber: 1,
+    timeSpentSeconds: 12,
+    recordedAt: "2026-09-13T10:00:00.000Z",
+  };
+  const secondAttempt = {
+    ...firstAttempt,
+    recordId: "concurrent-listening-01-b",
+    attemptNumber: 2,
+    recordedAt: "2026-09-13T10:05:00.000Z",
+  };
+  const snapshot = {
+    learnerId: "learner-1",
+    completedActivityIds: ["SVO-01"],
+    completedListeningActivityIds: [],
+  };
+
+  await Promise.all([
+    persistLearnerProgress(persistence, {
+      ...snapshot,
+      progressRecords: [firstAttempt],
+    }),
+    persistLearnerProgress(persistence, {
+      ...snapshot,
+      progressRecords: [secondAttempt],
+    }),
+  ]);
+
+  const restored = await loadLearnerProgress(
+    createD1LearnerProgressPersistence(database),
+    "learner-1",
+  );
+  assert.ok(restored);
+  assert.equal(initialReads, 2);
+  assert.deepEqual(
+    restored.progressRecords.map((record) => record.recordId).sort(),
+    [firstAttempt.recordId, secondAttempt.recordId].sort(),
+  );
+});
+
 test("restores progress for the active learner after another learner used the same browser", async () => {
   const storedProgressByKey = new Map([
     ["spread11:learner-a:svo-progress", JSON.stringify({
