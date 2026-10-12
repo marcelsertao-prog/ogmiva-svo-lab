@@ -444,6 +444,94 @@ test("persists the correct Speaking 01 ProgressRecord for the active learner", a
   }
 });
 
+test("keeps unsynced warning when an older remote save succeeds late", async (t) => {
+  const requests = [];
+  const responses = [];
+  const previousSpeechSynthesisUtterance = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "SpeechSynthesisUtterance",
+  );
+  t.mock.method(globalThis, "fetch", async (input, init) => {
+    const request = input instanceof Request
+      ? input
+      : new Request(new URL(String(input), "http://localhost"), init);
+    requests.push(await request.json());
+    return new Promise((resolve) => responses.push(resolve));
+  });
+
+  const mounted = await mountLearnerJourney({
+    learnerId: "learner-1",
+    initialProgress: {
+      learnerId: "learner-1",
+      completedActivityIds: ["SVO-01"],
+      completedListeningActivityIds: [],
+    },
+  }, {
+    prepareWindow(browserWindow) {
+      const SpeechSynthesisUtterance = class { onend; };
+      browserWindow.SpeechSynthesisUtterance = SpeechSynthesisUtterance;
+      globalThis.SpeechSynthesisUtterance = SpeechSynthesisUtterance;
+      browserWindow.speechSynthesis = {
+        cancel() {},
+        speak(utterance) { utterance.onend?.(); },
+      };
+    },
+  });
+
+  try {
+    const listeningCard = mounted.container.querySelector(".stage-listening");
+    assert.ok(listeningCard);
+    const playButton = listeningCard.querySelector(".audio-button");
+    assert.ok(playButton);
+
+    await act(async () => {
+      playButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    const incorrectChoice = listeningCard.querySelector(
+      'input[name="listening-svo-choice"][value="Likes Anna music."]',
+    );
+    assert.ok(incorrectChoice);
+    await act(async () => { incorrectChoice.click(); });
+
+    const checkButton = listeningCard.querySelector(".listening-actions button");
+    assert.ok(checkButton);
+
+    await act(async () => {
+      checkButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    assert.equal(requests.length, 1);
+
+    await act(async () => {
+      checkButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    assert.equal(requests.length, 2);
+
+    await act(async () => {
+      responses[1](new Response(null, { status: 503 }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    assert.match(mounted.container.textContent ?? "", /Progresso ainda não sincronizado/i);
+
+    await act(async () => {
+      responses[0](new Response(null, { status: 204 }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    assert.match(mounted.container.textContent ?? "", /Progresso ainda não sincronizado/i);
+  } finally {
+    for (const resolve of responses) resolve(new Response(null, { status: 503 }));
+    if (previousSpeechSynthesisUtterance) {
+      Object.defineProperty(globalThis, "SpeechSynthesisUtterance", previousSpeechSynthesisUtterance);
+    } else {
+      delete globalThis.SpeechSynthesisUtterance;
+    }
+    await mounted.cleanup();
+  }
+});
+
 test("persists an incorrect Listening 01 assessment without completing the activity", async (t) => {
   const requests = [];
   const previousSpeechSynthesisUtterance = Object.getOwnPropertyDescriptor(

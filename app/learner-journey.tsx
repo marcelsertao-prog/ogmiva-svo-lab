@@ -7,7 +7,7 @@ import { EvidenceEngine } from "@seal-sdk/evidence";
 import { createSubmitAnswerInteraction } from "@seal-sdk/interaction";
 import { DefaultProgressEngine } from "@seal-sdk/progress";
 import { DefaultSessionEngine, type SessionState } from "@seal-sdk/session";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createBrowserSpeaking01Recognizer } from "./browser-speaking-recognizer";
 import { persistLearnerJourneyProgress } from "./learner-progress-client";
 import { checkListening01Answer, listening01Activity } from "./listening-01";
@@ -223,6 +223,7 @@ export function LearnerJourney({
     initialCompletedActivityIds,
   );
   const [screen, setScreen] = useState<Screen>("journey");
+  const latestRemoteSaveAttempt = useRef(0);
   const [isRemoteProgressUnsynced, setIsRemoteProgressUnsynced] = useState(false);
   const [isSvo01Complete, setIsSvo01Complete] = useState(
     initialSvoCompletion.isSvo01Complete,
@@ -534,8 +535,11 @@ export function LearnerJourney({
   }
 
   async function persistProgress(progress: StoredLearnerProgress) {
+    const attempt = ++latestRemoteSaveAttempt.current;
     const { remoteSaved } = await persistLearnerJourneyProgress(window.localStorage, progress);
-    setIsRemoteProgressUnsynced(!remoteSaved);
+    if (attempt === latestRemoteSaveAttempt.current) {
+      setIsRemoteProgressUnsynced(!remoteSaved);
+    }
   }
 
   function addToAnswer(tile: Tile) {
