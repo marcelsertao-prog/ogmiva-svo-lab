@@ -1622,6 +1622,61 @@ test("isolates verified Listening 01 attempts from legacy learner progress", asy
   assert.deepEqual(JSON.parse(storedLegacy.snapshot), legacySnapshot);
 });
 
+test("persists an incorrect Listening 01 attempt with the server-assessed result", async (t) => {
+  const { database, miniflare } = await createMigratedOgmivaHarness(
+    t,
+    "verified-listening01-incorrect",
+  );
+  const recordId = "verified-listening01-incorrect-1";
+  const response = await miniflare.dispatchFetch(
+    "http://localhost/api/listening-01-attempts",
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "oai-authenticated-user-id": "external-user-2",
+        "oai-authenticated-user-email": "returning@example.com",
+      },
+      body: JSON.stringify({
+        activityId: "LISTEN-SVO-01",
+        recordId,
+        selectedAnswer: "Likes Anna music.",
+        score: 1,
+        completed: true,
+      }),
+    },
+  );
+
+  const { results } = await database.prepare(`
+    SELECT learner_id, record_id, activity_id, selected_answer,
+      score, completed, verified_at
+    FROM verified_listening01_attempts
+  `).all();
+  assert.equal(results.length, 1, "the server must persist exactly one verified attempt");
+  const [attempt] = results;
+  assert.deepEqual({
+    learnerId: attempt.learner_id,
+    recordId: attempt.record_id,
+    activityId: attempt.activity_id,
+    selectedAnswer: attempt.selected_answer,
+    score: attempt.score,
+    completed: attempt.completed,
+  }, {
+    learnerId: "learner-2",
+    recordId,
+    activityId: "LISTEN-SVO-01",
+    selectedAnswer: "Likes Anna music.",
+    score: 0,
+    completed: 0,
+  });
+  assert.ok(
+    typeof attempt.verified_at === "string"
+      && Number.isFinite(Date.parse(attempt.verified_at)),
+    "verified_at must be a valid server timestamp",
+  );
+  assert.equal(response.status, 201);
+});
+
 test("saves learner progress under the learner resolved from a valid Ogmiva session", async () => {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
