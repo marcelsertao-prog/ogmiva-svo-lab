@@ -2436,6 +2436,49 @@ test("preserves both D1 assessment records when concurrent saves read the same s
   );
 });
 
+test("preserves D1 activity completions after a stale progress snapshot", async (t) => {
+  const miniflare = new Miniflare({
+    modules: true,
+    script: `export default {
+      fetch() { return new Response(null, { status: 204 }); }
+    }`,
+    compatibilityDate: "2026-05-15",
+    d1Databases: { DB: `stale-completions-${process.pid}-${Date.now()}` },
+  });
+  t.after(() => miniflare.dispose());
+  const database = await miniflare.getD1Database("DB");
+  await applyD1Migrations(database);
+
+  const persistence = createD1LearnerProgressPersistence(database);
+  await persistLearnerProgress(persistence, {
+    learnerId: "learner-1",
+    completedActivityIds: ["SVO-01", "SVO-02"],
+    completedListeningActivityIds: ["LISTEN-SVO-01", "LISTEN-SVO-02"],
+    progressRecords: [],
+  });
+
+  await persistLearnerProgress(persistence, {
+    learnerId: "learner-1",
+    completedActivityIds: ["SVO-01"],
+    completedListeningActivityIds: [],
+    progressRecords: [],
+  });
+
+  const stored = await database.prepare(`
+    SELECT snapshot FROM learner_progress WHERE learner_id = ?
+  `).bind("learner-1").first();
+  assert.ok(stored);
+  const snapshot = JSON.parse(stored.snapshot);
+  assert.deepEqual(
+    snapshot.completedActivityIds,
+    ["SVO-01", "SVO-02"],
+  );
+  assert.deepEqual(
+    snapshot.completedListeningActivityIds,
+    ["LISTEN-SVO-01", "LISTEN-SVO-02"],
+  );
+});
+
 test("restores progress for the active learner after another learner used the same browser", async () => {
   const storedProgressByKey = new Map([
     ["spread11:learner-a:svo-progress", JSON.stringify({
