@@ -821,6 +821,21 @@ export function LearnerJourney({
       result.feedback === "correct"
       || (result.feedback === "incorrect" && result.progress)
     ) {
+      if (selectedListeningChoice && result.progress) {
+        try {
+          await fetch("/api/listening-01-attempts", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              activityId: listening01Activity.id,
+              recordId: result.progress.recordId,
+              selectedAnswer: selectedListeningChoice,
+            }),
+          });
+        } catch {
+          // Keep historical progress available when verification is offline.
+        }
+      }
       const completedActivityIds: ActivityId[] = [];
       if (isSvo01Complete) completedActivityIds.push("SVO-01");
       if (isSvo02Complete) completedActivityIds.push("SVO-02");
