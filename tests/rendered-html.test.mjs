@@ -1677,6 +1677,54 @@ test("persists an incorrect Listening 01 attempt with the server-assessed result
   assert.equal(response.status, 201);
 });
 
+test("accepts an identical replay of a verified Listening 01 attempt", async (t) => {
+  const { database, miniflare } = await createMigratedOgmivaHarness(
+    t,
+    "verified-listening01-identical-replay",
+  );
+  const recordId = "verified-listening01-replay-1";
+  const submission = {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "oai-authenticated-user-id": "external-user-2",
+      "oai-authenticated-user-email": "returning@example.com",
+    },
+    body: JSON.stringify({
+      activityId: "LISTEN-SVO-01",
+      recordId,
+      selectedAnswer: "Likes Anna music.",
+    }),
+  };
+  const endpoint = "http://localhost/api/listening-01-attempts";
+
+  const first = await miniflare.dispatchFetch(endpoint, submission);
+  assert.equal(first.status, 201);
+
+  const original = await database.prepare(`
+    SELECT learner_id, record_id, activity_id, selected_answer,
+      score, completed, verified_at
+    FROM verified_listening01_attempts
+    WHERE learner_id = ? AND record_id = ?
+  `).bind("learner-2", recordId).first();
+  assert.ok(original, "the first POST must persist the verified attempt");
+  assert.equal(original.selected_answer, "Likes Anna music.");
+  assert.equal(original.score, 0);
+  assert.equal(original.completed, 0);
+
+  const replay = await miniflare.dispatchFetch(endpoint, submission);
+  assert.ok(replay.ok, "an identical replay must acknowledge the existing attempt");
+
+  const { results } = await database.prepare(`
+    SELECT learner_id, record_id, activity_id, selected_answer,
+      score, completed, verified_at
+    FROM verified_listening01_attempts
+    WHERE learner_id = ? AND record_id = ?
+  `).bind("learner-2", recordId).all();
+  assert.equal(results.length, 1, "an identical replay must not add another row");
+  assert.deepEqual(results[0], original, "the replay must preserve the original verified row");
+});
+
 test("saves learner progress under the learner resolved from a valid Ogmiva session", async () => {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);

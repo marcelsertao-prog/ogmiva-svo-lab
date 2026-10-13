@@ -10,7 +10,12 @@ import { getOgmivaSessionLearnerId } from "../../ogmiva-session";
 
 type D1Database = {
   prepare(query: string): {
-    bind(...values: unknown[]): { run(): Promise<unknown> };
+    bind(...values: unknown[]): {
+      run(): Promise<unknown>;
+      first(): Promise<{
+        activity_id: string; selected_answer: string; score: number; completed: number;
+      } | null>;
+    };
   };
 };
 
@@ -63,6 +68,7 @@ export async function POST(request: Request) {
     INSERT INTO verified_listening01_attempts (
       learner_id, record_id, activity_id, selected_answer, score, completed
     ) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT (learner_id, record_id) DO NOTHING
   `).bind(
     learnerId,
     recordId,
@@ -71,6 +77,21 @@ export async function POST(request: Request) {
     assessment.score,
     assessment.correct ? 1 : 0,
   ).run();
+
+  const existing = await context.DB.prepare(`
+    SELECT activity_id, selected_answer, score, completed
+    FROM verified_listening01_attempts
+    WHERE learner_id = ? AND record_id = ?
+  `).bind(learnerId, recordId).first();
+  if (
+    !existing
+    || existing.activity_id !== listening01Activity.id
+    || existing.selected_answer !== selectedAnswer
+    || existing.score !== assessment.score
+    || existing.completed !== (assessment.correct ? 1 : 0)
+  ) {
+    return new Response(null, { status: 409 });
+  }
 
   return new Response(null, { status: 201 });
 }
