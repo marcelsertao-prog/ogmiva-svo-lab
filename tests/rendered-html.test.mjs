@@ -1725,6 +1725,62 @@ test("accepts an identical replay of a verified Listening 01 attempt", async (t)
   assert.deepEqual(results[0], original, "the replay must preserve the original verified row");
 });
 
+test("rejects a conflicting replay of a verified Listening 01 attempt", async (t) => {
+  const { database, miniflare } = await createMigratedOgmivaHarness(
+    t,
+    "verified-listening01-conflicting-replay",
+  );
+  const recordId = "verified-listening01-conflict-1";
+  const endpoint = "http://localhost/api/listening-01-attempts";
+  const headers = {
+    "content-type": "application/json",
+    "oai-authenticated-user-id": "external-user-2",
+    "oai-authenticated-user-email": "returning@example.com",
+  };
+
+  const first = await miniflare.dispatchFetch(endpoint, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      activityId: "LISTEN-SVO-01",
+      recordId,
+      selectedAnswer: "Likes Anna music.",
+    }),
+  });
+  assert.equal(first.status, 201);
+
+  const original = await database.prepare(`
+    SELECT learner_id, record_id, activity_id, selected_answer,
+      score, completed, verified_at
+    FROM verified_listening01_attempts
+    WHERE learner_id = ? AND record_id = ?
+  `).bind("learner-2", recordId).first();
+  assert.ok(original);
+  assert.equal(original.selected_answer, "Likes Anna music.");
+  assert.equal(original.score, 0);
+  assert.equal(original.completed, 0);
+
+  const conflict = await miniflare.dispatchFetch(endpoint, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      activityId: "LISTEN-SVO-01",
+      recordId,
+      selectedAnswer: "Anna likes music.",
+    }),
+  });
+  assert.equal(conflict.status, 409, "a different answer must conflict with the existing record");
+
+  const { results } = await database.prepare(`
+    SELECT learner_id, record_id, activity_id, selected_answer,
+      score, completed, verified_at
+    FROM verified_listening01_attempts
+    WHERE learner_id = ? AND record_id = ?
+  `).bind("learner-2", recordId).all();
+  assert.equal(results.length, 1, "a conflicting replay must not create another row");
+  assert.deepEqual(results[0], original, "a conflicting replay must preserve the original verified row");
+});
+
 test("saves learner progress under the learner resolved from a valid Ogmiva session", async () => {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
