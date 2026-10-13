@@ -260,6 +260,11 @@ export function LearnerJourney({
   const [selectedListeningChoice, setSelectedListeningChoice] = useState<string | null>(null);
   const [listeningFeedback, setListeningFeedback] = useState<Feedback>("idle");
   const [isListening01VerificationUnconfirmed, setIsListening01VerificationUnconfirmed] = useState(false);
+  const [pendingListening01Verification, setPendingListening01Verification] = useState<{
+    activityId: string;
+    recordId: string;
+    selectedAnswer: string;
+  } | null>(null);
   const [isListening01Complete, setIsListening01Complete] = useState(
     restoredInitialProgress?.isListening01Complete ?? false,
   );
@@ -611,6 +616,7 @@ export function LearnerJourney({
   }
 
   function resetListeningExperiment() {
+    if (pendingListening01Verification) return;
     const resetState = resetListening01Attempt(isListening01Complete);
 
     window.speechSynthesis?.cancel();
@@ -805,6 +811,7 @@ export function LearnerJourney({
   }
 
   async function checkListeningChoice() {
+    if (pendingListening01Verification) return;
     const session = await ensureListening01Session();
     const result = await checkListening01Answer({
       selectedAnswer: selectedListeningChoice,
@@ -825,16 +832,19 @@ export function LearnerJourney({
       || (result.feedback === "incorrect" && result.progress)
     ) {
       if (selectedListeningChoice && result.progress) {
+        const submission = {
+          activityId: listening01Activity.id,
+          recordId: result.progress.recordId,
+          selectedAnswer: selectedListeningChoice,
+        };
+        setPendingListening01Verification(submission);
         try {
           const response = await fetch("/api/listening-01-attempts", {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              activityId: listening01Activity.id,
-              recordId: result.progress.recordId,
-              selectedAnswer: selectedListeningChoice,
-            }),
+            body: JSON.stringify(submission),
           });
+          if (response.ok) setPendingListening01Verification(null);
           setIsListening01VerificationUnconfirmed(!response.ok);
         } catch {
           setIsListening01VerificationUnconfirmed(true);
@@ -862,6 +872,21 @@ export function LearnerJourney({
       if (result.feedback === "correct") {
         setIsListening01Complete(true);
       }
+    }
+  }
+
+  async function retryListening01Verification() {
+    if (!pendingListening01Verification) return;
+    try {
+      const response = await fetch("/api/listening-01-attempts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(pendingListening01Verification),
+      });
+      if (response.ok) setPendingListening01Verification(null);
+      setIsListening01VerificationUnconfirmed(!response.ok);
+    } catch {
+      setIsListening01VerificationUnconfirmed(true);
     }
   }
 
@@ -1682,7 +1707,7 @@ export function LearnerJourney({
 
                 {isListening01Unlocked && hasPlayedListeningPrompt && (
                   <div className="listening-question stage-listening-question">
-                    <fieldset className="choice-section" disabled={listeningFeedback === "correct"}>
+                    <fieldset className="choice-section" disabled={listeningFeedback === "correct" || !!pendingListening01Verification}>
                       <legend className="section-label">Choose one answer</legend>
                       <div className="sentence-choices">
                         {sentenceChoices.map((choice, index) => (
@@ -1698,7 +1723,6 @@ export function LearnerJourney({
                               onChange={() => {
                                 setSelectedListeningChoice(choice.label);
                                 setListeningFeedback("idle");
-                                setIsListening01VerificationUnconfirmed(false);
                               }}
                             />
                             <span className="choice-letter" aria-hidden="true">{String.fromCharCode(65 + index)}</span>
@@ -1732,15 +1756,20 @@ export function LearnerJourney({
                     {isListening01VerificationUnconfirmed && (
                       <p role="status">Verificação da resposta ainda não confirmada.</p>
                     )}
+                    {pendingListening01Verification && isListening01VerificationUnconfirmed && (
+                      <button className="secondary-button" type="button" onClick={retryListening01Verification}>
+                        Retry verification
+                      </button>
+                    )}
 
                     <div className="activity-actions listening-actions">
                       {listeningFeedback === "correct" ? (
                         <div className="stage-complete-actions">
-                          <button className="secondary-button" type="button" onClick={resetListeningExperiment}>Try again</button>
+                          <button className="secondary-button" type="button" onClick={resetListeningExperiment} disabled={!!pendingListening01Verification}>Try again</button>
                           <button className="primary-button" type="button" onClick={openActivity2}>Continue to SVO-02 <span>→</span></button>
                         </div>
                       ) : (
-                        <button className="primary-button" type="button" onClick={checkListeningChoice}>Check answer <span>→</span></button>
+                        <button className="primary-button" type="button" onClick={checkListeningChoice} disabled={!!pendingListening01Verification}>Check answer <span>→</span></button>
                       )}
                     </div>
                   </div>
